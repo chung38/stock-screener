@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { runDiagnose, lastDiagnose } from '../api.js';
+import { runDiagnose, lastDiagnose, STATIC, REPO } from '../api.js';
 import { fmtDate, fmtShortDate } from '../format.js';
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString('zh-TW', { hour12: false }) : '—');
@@ -29,6 +29,23 @@ export default function StatusView({ status, coverage, onUpdate }) {
   const cov = coverage;
   return (
     <div className="status-view">
+      {STATIC ? (
+        <section className="card">
+          <h2>資料更新</h2>
+          <p>上次更新：{when(status?.updated?.lastRun)}</p>
+          <p className="muted small">
+            GitHub 會在每個交易日 18:40、週六 10:30 自動抓資料並更新這個頁面（GitHub 的排程偶爾會延遲半小時左右）。
+            想立刻更新，到 GitHub 的 Actions 分頁，選「每日更新」按 Run workflow。
+          </p>
+          {REPO && (
+            <div className="row-actions">
+              <a className="ghost" href={`https://github.com/${REPO}/actions`} target="_blank" rel="noreferrer">
+                打開 GitHub Actions
+              </a>
+            </div>
+          )}
+        </section>
+      ) : (
       <section className="card">
         <h2>資料更新</h2>
         {job?.running ? (
@@ -58,6 +75,7 @@ export default function StatusView({ status, coverage, onUpdate }) {
         </div>
         <p className="muted small">伺服器開著時，每個交易日 17:40 會自動更新，週六 10:30 抓集保股權分散表。</p>
       </section>
+      )}
 
       {cov && (
         <section className="card">
@@ -98,6 +116,7 @@ export default function StatusView({ status, coverage, onUpdate }) {
         </section>
       )}
 
+      {!STATIC && (
       <section className="card">
         <h2>資料來源檢查</h2>
         <p className="muted small">逐一連到證交所、櫃買、觀測站、集保，看哪個抓不到。約需 1 分鐘。</p>
@@ -117,6 +136,7 @@ export default function StatusView({ status, coverage, onUpdate }) {
           </ul>
         )}
       </section>
+      )}
 
       {status?.log?.length > 0 && (
         <section className="card">

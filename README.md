@@ -18,7 +18,19 @@
 - **均線扣抵**：N 日均線明天會扣掉 N 天前那根收盤。現價高於未來 5 天所有扣抵值顯示「易漲」，代表價格只要守住，均線一週內會持續上彎；全部高於現價顯示「壓力」。點開個股可在 K 線圖上看到週扣、月扣、季扣的位置。
 - **錯殺逆勢**：營收年增仍過門檻，但股價距 20 日高點跌 15% 以上，且月線乖離低於 −8% 或 RSI(6) 低於 20。大盤狀態依加權指數單日、5 日、距 20 日高點跌幅判斷為平穩／警戒／恐慌。每檔附上停損（近 5 日低點再下 3%）與反彈到週線、月線的價位。
 
-## 在自己電腦上使用（最簡單）
+## 用手機看（GitHub 自動更新，推薦）
+
+這個 repo 已經設定好 GitHub Actions（`.github/workflows/daily.yml`）：
+
+- 每個交易日台北時間 18:40、週六 10:30，GitHub 會自動抓證交所、櫃買、觀測站、集保資料，存回 repo 的 `data/` 資料夾。
+- 接著把選股畫面發布到 GitHub Pages：**https://chung38.github.io/stock-screener/**，用手機瀏覽器打開即可，篩選條件一樣可以調。
+- 第一次執行會自動建立近 4 個月的歷史資料，大約 30–40 分鐘。
+- 想立刻更新：repo 的 Actions 分頁 →「每日更新」→ Run workflow。勾選「重新補齊」會重抓 4 個月。
+- repo 必須是 Public 才能免費使用 GitHub Pages（篩選結果與資料都會公開）。
+
+不用開電腦，也不用伺服器。
+
+## 在自己電腦上使用
 
 1. 到 [nodejs.org](https://nodejs.org) 下載安裝 **LTS 版** Node.js（只需要裝一次）。
 2. 解壓縮這個專案。
@@ -77,6 +89,7 @@ npm run selftest   # 不連網，用假資料測試整個篩選流程
 ## 檔案結構
 
 ```
+.github/workflows/daily.yml  GitHub 每日自動更新＋發布手機網頁
 start-windows.bat       Windows 雙擊啟動
 start.sh                Mac / Linux 啟動
 package.json
@@ -100,10 +113,13 @@ server/
   jobs/
     update.js           每日更新與歷史回補
     diagnose.js         資料來源檢查
+    export.js           輸出 data.json、清除過期資料
   screener/
     data.js             讀取累積資料
     indicators.js       均線、扣抵、RSI、大盤狀態
-    screen.js           三重共振篩選、錯殺清單、個股明細
+    core.js             三重共振篩選、錯殺清單、個股明細（伺服器與瀏覽器共用）
+    screen.js           伺服器端讀檔後呼叫 core.js
+    bundle.js           把資料壓成手機版用的 data.json
 client/
   index.html
   src/

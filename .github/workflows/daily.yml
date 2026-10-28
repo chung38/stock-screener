@@ -1,0 +1,73 @@
+name: 每日更新
+
+# 台北時間：週一到週五 18:40 抓當天資料；週六 10:30 抓集保千張大戶
+on:
+  schedule:
+    - cron: '40 10 * * 1-5'
+    - cron: '30 2 * * 6'
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: '重新補齊近 4 個月歷史資料（約 30 分鐘）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安裝套件
+        run: npm ci --no-audit --no-fund
+
+      - name: 抓資料（第一次會自動建立歷史資料）
+        env:
+          CRON_ENABLED: '0'
+        run: node server/cli.js ${{ inputs.backfill && 'backfill' || 'update' }}
+
+      - name: 把資料存回 repo
+        if: always()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A data
+          if git diff --cached --quiet; then
+            echo "資料沒有變動"
+          else
+            git commit -q -m "資料更新 $(TZ=Asia/Taipei date +%Y-%m-%d)"
+            git pull -q --rebase origin main
+            git push -q
+          fi
+
+      - name: 建置手機網頁
+        run: |
+          VITE_STATIC=1 VITE_REPO=${{ github.repository }} npx vite build --base ./
+          node server/cli.js export dist/data.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

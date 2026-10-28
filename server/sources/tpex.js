@@ -15,30 +15,40 @@ function dateOf(json) {
   return null;
 }
 
-async function tryAll(urls, date) {
+// 依序試每個網址，用 parse 解析；解析出資料才採用，否則換下一個網址
+// 全部都「有回應但沒資料」→ 回傳 null（休市或尚未公布）；全部連線失敗 → 拋錯
+async function tryAll(urls, date, parse) {
   const errors = [];
+  let responded = false;
   for (const u of urls) {
     try {
       const json = await getJSON(u);
+      responded = true;
       const got = dateOf(json);
-      if (got && date && got !== date) return { json, tables: [] };
-      const tables = extractTables(json);
-      if (tables.some((t) => t.data?.length)) return { json, tables };
-      // 有回應但沒資料（休市或尚未公布）
-      if (tables.length || json.stat || json.iTotalRecords === 0) return { json, tables };
+      if (got && date && got !== date) continue;
+      const out = parse(extractTables(json));
+      if (out) return out;
     } catch (e) {
       errors.push(e.message);
     }
   }
+  if (responded) return null;
   throw new Error(`櫃買資料取得失敗：${errors.join(' | ')}`);
 }
 
 /** 某日全部上櫃股票收盤行情。休市回傳 null */
 export async function fetchDaily(date) {
-  const { tables } = await tryAll([
-    `${BASE}/www/zh-tw/afterTrading/dailyQ?date=${encodeURIComponent(toSlash(date))}&type=EW&response=json`,
-    `${BASE}/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=${encodeURIComponent(toRocSlash(date))}`,
-  ], date);
+  return tryAll(
+    [
+      `${BASE}/www/zh-tw/afterTrading/dailyQ?date=${encodeURIComponent(toSlash(date))}&type=EW&response=json`,
+      `${BASE}/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=${encodeURIComponent(toRocSlash(date))}`,
+    ],
+    date,
+    parseDaily,
+  );
+}
+
+function parseDaily(tables) {
   let t = pickTable(tables, '代號', '收盤');
   let ix;
   if (t) {
@@ -54,7 +64,7 @@ export async function fetchDaily(date) {
     };
   } else {
     // 舊版 aaData 沒有欄位名稱：代號,名稱,收盤,漲跌,開盤,最高,最低,均價,成交股數…
-    t = tables.find((x) => x.data?.length);
+    t = tables.find((x) => !x.fields && x.data?.length);
     if (!t) return null;
     ix = { code: 0, name: 1, c: 2, o: 4, h: 5, l: 6, v: 8 };
   }
@@ -73,15 +83,23 @@ export async function fetchDaily(date) {
       v: num(r[ix.v]) ?? 0,
     };
   }
-  return Object.keys(prices).length ? { prices } : null;
+  // 一般交易日上櫃普通股有 700 檔以上；太少代表抓到的不是個股表
+  return Object.keys(prices).length > 100 ? { prices } : null;
 }
 
 /** 某日三大法人買賣超（股）→ {code: [投信, 外資]} */
 export async function fetchInst(date) {
-  const { tables } = await tryAll([
-    `${BASE}/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${encodeURIComponent(toSlash(date))}&response=json`,
-    `${BASE}/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&o=json&se=EW&t=D&d=${encodeURIComponent(toRocSlash(date))}`,
-  ], date);
+  return tryAll(
+    [
+      `${BASE}/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${encodeURIComponent(toSlash(date))}&response=json`,
+      `${BASE}/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&o=json&se=EW&t=D&d=${encodeURIComponent(toRocSlash(date))}`,
+    ],
+    date,
+    parseInst,
+  );
+}
+
+function parseInst(tables) {
   let t = pickTable(tables, '代號', '投信');
   let ix;
   if (t) {
@@ -93,7 +111,7 @@ export async function fetchInst(date) {
     };
   } else {
     // 舊版欄位順序：代號,名稱,外資(不含自營)買,賣,淨,外資自營買,賣,淨,外資合計買,賣,淨,投信買,賣,淨…
-    t = tables.find((x) => x.data?.length);
+    t = tables.find((x) => !x.fields && x.data?.length);
     if (!t) return null;
     ix = { code: 0, trust: 13, foreign: 4 };
   }
@@ -103,7 +121,7 @@ export async function fetchInst(date) {
     if (!isCommonStock(code)) continue;
     out[code] = [num(r[ix.trust]) ?? 0, ix.foreign >= 0 ? num(r[ix.foreign]) ?? 0 : 0];
   }
-  return Object.keys(out).length ? out : null;
+  return Object.keys(out).length > 50 ? out : null;
 }
 
 // ---- OpenAPI（只提供最新一期） ----

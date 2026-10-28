@@ -1,5 +1,6 @@
 // 日期工具：內部一律用 'YYYYMMDD' 字串，以台北時間為準
-import { TZ } from '../config.js';
+// 不 import config.js，讓瀏覽器也能用這個檔案
+const TZ = 'Asia/Taipei';
 
 export function nowTPE() {
   const parts = Object.fromEntries(

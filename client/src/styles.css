@@ -1499,3 +1499,20 @@ button.gt-row:hover {
     transition: none !important;
   }
 }
+
+a.primary,
+a.ghost {
+  display: inline-block;
+  text-decoration: none;
+}
+.onboard a.primary {
+  margin-top: 4px;
+}
+a.ghost {
+  color: var(--ink);
+}
+@media (max-width: 640px) {
+  .top-actions .mk-date {
+    display: none;
+  }
+}

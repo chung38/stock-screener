@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDefaults, getScreen, getStatus, startUpdate } from './api.js';
+import { getDefaults, getScreen, getStatus, startUpdate, STATIC, REPO } from './api.js';
 import MarketBar from './components/MarketBar.jsx';
 import FilterPanel from './components/FilterPanel.jsx';
 import ResultList from './components/ResultList.jsx';
@@ -124,7 +124,9 @@ export default function App() {
         </div>
         <MarketBar market={data?.market} asOf={data?.asOf} />
         <div className="top-actions">
-          {running ? (
+          {STATIC ? (
+            <span className="mk-date">每個交易日 18:40 自動更新</span>
+          ) : running ? (
             <button type="button" className="ghost running" onClick={() => setTab('status')}>
               更新中 {status.job.total ? `${status.job.done}/${status.job.total}` : ''}
             </button>
@@ -165,28 +167,42 @@ export default function App() {
           {error && <div className="error">{error}</div>}
 
           {noData && tab !== 'status' && (
+            STATIC ? (
+              <section className="onboard">
+                <h2>資料準備中</h2>
+                <p>
+                  GitHub 正在建立近 4 個月的歷史資料，第一次大約需要 30–40 分鐘。完成後重新整理這個頁面，名單就會出現。
+                </p>
+                {REPO && (
+                  <a className="primary" href={`https://github.com/${REPO}/actions`} target="_blank" rel="noreferrer">
+                    查看執行進度
+                  </a>
+                )}
+              </section>
+            ) : (
             <section className="onboard">
-              <h2>{running ? '正在建立歷史資料' : '還沒有資料'}</h2>
-              <p>
-                第一次使用要先抓近 4 個月的股價、法人、營收、毛利率與集保資料。證交所有限速，大約 15–25 分鐘，
-                跑完名單會自動出現。這段時間電腦不要關機或睡眠。
-              </p>
-              {running ? (
-                <div className="progress">
-                  <p>
-                    {status.job.stage}
-                    {status.job.total ? `（${status.job.done}/${status.job.total}）` : ''}
-                  </p>
-                  <div className="pbar">
-                    <i style={{ width: status.job.total ? `${(status.job.done / status.job.total) * 100}%` : '8%' }} />
+                <h2>{running ? '正在建立歷史資料' : '還沒有資料'}</h2>
+                <p>
+                  第一次使用要先抓近 4 個月的股價、法人、營收、毛利率與集保資料。證交所有限速，大約 15–25 分鐘，
+                  跑完名單會自動出現。這段時間電腦不要關機或睡眠。
+                </p>
+                {running ? (
+                  <div className="progress">
+                    <p>
+                      {status.job.stage}
+                      {status.job.total ? `（${status.job.done}/${status.job.total}）` : ''}
+                    </p>
+                    <div className="pbar">
+                      <i style={{ width: status.job.total ? `${(status.job.done / status.job.total) * 100}%` : '8%' }} />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <button type="button" className="primary" onClick={() => doUpdate(true)}>
-                  建立歷史資料
-                </button>
-              )}
-            </section>
+                ) : (
+                  <button type="button" className="primary" onClick={() => doUpdate(true)}>
+                    建立歷史資料
+                  </button>
+                )}
+              </section>
+            )
           )}
 
           {tab === 'list' && data && !noData && (
