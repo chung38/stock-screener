@@ -3,10 +3,14 @@ name: 資料來源測試
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -51,4 +55,11 @@ jobs:
           }
           console.log(`\n結果：${ok}/${tests.length} 個來源可用`);
           EOF
-          node probe.mjs
+          node probe.mjs | tee probe-result.txt
+      - name: 把結果存回 repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add probe-result.txt
+          git commit -m "資料來源測試結果" || true
+          git push
