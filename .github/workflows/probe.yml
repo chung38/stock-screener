@@ -1,0 +1,54 @@
+name: 資料來源測試
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 測試能否連到證交所、櫃買、觀測站、集保
+        run: |
+          cat > probe.mjs <<'EOF'
+          const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36';
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          // 前一個平日（台北時間）
+          const tpe = new Date(Date.now() + 8 * 3600e3);
+          do tpe.setUTCDate(tpe.getUTCDate() - 1); while ([0, 6].includes(tpe.getUTCDay()));
+          const y = tpe.getUTCFullYear(), m = String(tpe.getUTCMonth() + 1).padStart(2, '0'), d = String(tpe.getUTCDate()).padStart(2, '0');
+          const ymd = `${y}${m}${d}`, slash = `${y}/${m}/${d}`, roc = `${y - 1911}/${m}/${d}`;
+          const tests = [
+            ['上市行情', `https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=${ymd}&type=ALLBUT0999&response=json`],
+            ['上市法人', `https://www.twse.com.tw/rwd/zh/fund/T86?date=${ymd}&selectType=ALLBUT0999&response=json`],
+            ['上市月營收 OpenAPI', 'https://openapi.twse.com.tw/v1/opendata/t187ap05_L'],
+            ['上櫃行情（新版）', `https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQ?date=${encodeURIComponent(slash)}&type=EW&response=json`],
+            ['上櫃行情（舊版）', `https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=${encodeURIComponent(roc)}`],
+            ['上櫃法人（新版）', `https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?type=Daily&sect=EW&date=${encodeURIComponent(slash)}&response=json`],
+            ['上櫃月營收 OpenAPI', 'https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O'],
+            ['觀測站月營收', `https://mopsov.twse.com.tw/nas/t21/sii/t21sc03_${y - 1911}_9_0.html`],
+            ['集保股權分散', 'https://opendata.tdcc.com.tw/getOD.ashx?id=1-5'],
+            ['集保個股查詢頁', 'https://www.tdcc.com.tw/portal/zh/smWeb/qryStock'],
+          ];
+          console.log(`測試日期 ${ymd}\n`);
+          let ok = 0;
+          for (const [name, url] of tests) {
+            try {
+              const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'zh-TW' }, signal: AbortSignal.timeout(60000) });
+              const buf = Buffer.from(await r.arrayBuffer());
+              const head = buf.subarray(0, 160).toString('utf8').replace(/\s+/g, ' ');
+              const blocked = /安全性|SECURITY|Access Denied|Forbidden/i.test(buf.toString('utf8', 0, 3000));
+              const good = r.ok && !blocked && buf.length > 500;
+              if (good) ok++;
+              console.log(`${good ? '✔ 正常' : '✘ 失敗'}  ${name}  HTTP ${r.status}  ${buf.length} bytes`);
+              if (!good) console.log(`     ${head}`);
+            } catch (e) {
+              console.log(`✘ 失敗  ${name}  ${e.message}`);
+            }
+            await sleep(4000);
+          }
+          console.log(`\n結果：${ok}/${tests.length} 個來源可用`);
+          EOF
+          node probe.mjs
