@@ -99,7 +99,10 @@ export async function fetchInst(date) {
   );
 }
 
-function parseInst(tables) {
+export function parseInst(tables) {
+  // 新版欄位只有「買進股數／賣出股數／買賣超股數」重複 7 組，沒有法人名稱，要依位置：
+  // 代號,名稱,外資(不含自營)買,賣,超,外資自營買,賣,超,外資合計買,賣,超,投信買,賣,超,自營…
+  const POS = { code: 0, trust: 13, foreign: 4 };
   let t = pickTable(tables, '代號', '投信');
   let ix;
   if (t) {
@@ -110,10 +113,11 @@ function parseInst(tables) {
       foreign: findCol(f, ['外資及陸資', '不含', '買賣超'], ['外資', '買賣超']),
     };
   } else {
-    // 舊版欄位順序：代號,名稱,外資(不含自營)買,賣,淨,外資自營買,賣,淨,外資合計買,賣,淨,投信買,賣,淨…
-    t = tables.find((x) => !x.fields && x.data?.length);
+    t =
+      tables.find((x) => x.fields && findCol(x.fields, '代號') === 0 && x.fields.length >= 14 && x.data?.length) ??
+      tables.find((x) => !x.fields && x.data?.length);
     if (!t) return null;
-    ix = { code: 0, trust: 13, foreign: 4 };
+    ix = POS;
   }
   const out = {};
   for (const r of t.data) {

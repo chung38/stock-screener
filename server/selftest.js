@@ -80,6 +80,14 @@ test('OpenAPI 營益分析（實際欄位）', () => {
   assert.equal(r['2026Q2']['2816'], undefined);
 });
 
+const { parseInst } = await import('./sources/tpex.js');
+test('櫃買新版法人表：依位置取投信', () => {
+  const fields = ['代號', '名稱', ...Array(7).fill(['買進股數', '賣出股數', '買賣超股數']).flat(), '三大法人買賣超股數合計'];
+  const row = (c) => [c, 'x', '1', '0', '-5,000', '0', '0', '0', '1', '0', '1', '40,000', '0', '40,000', ...Array(9).fill('0'), '1'];
+  const r = parseInst(extractTables({ tables: [{ fields, data: Array.from({ length: 60 }, (_, i) => row(String(6100 + i))) }] }));
+  assert.deepEqual(r['6100'], [40000, -5000]);
+});
+
 test('集保 CSV', () => {
   const rows = parseCSV('﻿資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%\n20261022,2330  ,15,1000,100,72.5\n');
   assert.equal(rows.length, 2);

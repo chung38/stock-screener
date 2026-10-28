@@ -190,53 +190,64 @@ async function mergeRevenue(byYm) {
 const stripMeta = (rows) =>
   Object.fromEntries(Object.entries(rows).map(([c, r]) => [c, { rev: r.rev, ly: r.ly, yoy: r.yoy }]));
 
+// 觀測站回補：periods 依新到舊；某市場 OpenAPI 已提供的期別就跳過。
+// 最新一期不標記完成（公司陸續申報，每天重抓）
+async function backfillFromMops({ kind, label, periods, latest, foundBy, fetchOne, merge }) {
+  const meta = await getMeta();
+  meta.complete ??= {};
+  stage(`${label}（觀測站回補）`, periods.length);
+  for (const k of periods) {
+    for (const market of ['sii', 'otc']) {
+      const doneKey = `${kind}:${k}:${market}`;
+      if (meta.complete[`${kind}:${k}`] || meta.complete[doneKey]) continue;
+      if (foundBy[market].has(k)) continue;
+      try {
+        const rows = await fetchOne(market, k);
+        if (rows && Object.keys(rows).length) {
+          await merge({ [k]: rows });
+          if (k !== latest) {
+            const m2 = await getMeta();
+            m2.complete = { ...m2.complete, [doneKey]: true };
+            await saveMeta(m2);
+          }
+        }
+      } catch (e) {
+        await log('warn', `觀測站 ${k} ${market === 'sii' ? '上市' : '上櫃'}${label}：${e.message}`);
+      }
+    }
+    state.done++;
+  }
+}
+
 async function updateRevenue() {
   stage('月營收', 0);
-  const found = [];
-  for (const [label, src] of [
-    ['上市', twse],
-    ['上櫃', tpex],
+  const foundBy = { sii: new Set(), otc: new Set() };
+  for (const [label, src, market] of [
+    ['上市', twse, 'sii'],
+    ['上櫃', tpex, 'otc'],
   ]) {
     try {
       const byYm = await src.fetchRevenueLatest();
       await mergeRevenue(byYm);
       await mergeIndustry(byYm);
-      found.push(...Object.keys(byYm));
+      for (const k of Object.keys(byYm)) foundBy[market].add(k);
     } catch (e) {
       await log('warn', `${label}月營收 OpenAPI：${e.message}`);
     }
   }
-  const latest = found.sort().at(-1) ?? expectedLatestRevenueMonth();
-  // 最新月由 OpenAPI 每天補齊；前幾個月用觀測站整月回補一次
-  const meta = await getMeta();
-  meta.complete ??= {};
-  const months = [1, 2, 3, 4].map((i) => shiftMonth(latest, -i));
-  if (!found.length) months.unshift(latest);
-  stage('月營收（觀測站回補）', months.length);
-  for (const ym of months) {
-    if (meta.complete[`rev:${ym}`]) {
-      state.done++;
-      continue;
-    }
-    const { y, m } = parseYm(ym);
-    let ok = true;
-    for (const market of ['sii', 'otc']) {
-      try {
-        const rows = await mops.fetchRevenueMonth(market, y, m);
-        if (rows && Object.keys(rows).length) await mergeRevenue({ [ym]: rows });
-        else ok = false;
-      } catch (e) {
-        ok = false;
-        await log('warn', `觀測站 ${ym} ${market === 'sii' ? '上市' : '上櫃'}月營收：${e.message}`);
-      }
-    }
-    if (ok) {
-      const m2 = await getMeta();
-      m2.complete = { ...m2.complete, [`rev:${ym}`]: true };
-      await saveMeta(m2);
-    }
-    state.done++;
-  }
+  const latest = [...foundBy.sii, ...foundBy.otc].sort().at(-1) ?? expectedLatestRevenueMonth();
+  await backfillFromMops({
+    kind: 'rev',
+    label: '月營收',
+    periods: [0, 1, 2, 3, 4].map((i) => shiftMonth(latest, -i)),
+    latest,
+    foundBy,
+    fetchOne: (market, ym) => {
+      const { y, m } = parseYm(ym);
+      return mops.fetchRevenueMonth(market, y, m);
+    },
+    merge: mergeRevenue,
+  });
 }
 
 // ---------- 營益分析（毛利率） ----------
@@ -250,20 +261,20 @@ async function mergeMargins(byQ) {
 
 async function updateMargins() {
   stage('營益分析', 0);
-  const found = [];
-  for (const [label, src] of [
-    ['上市', twse],
-    ['上櫃', tpex],
+  const foundBy = { sii: new Set(), otc: new Set() };
+  for (const [label, src, market] of [
+    ['上市', twse, 'sii'],
+    ['上櫃', tpex, 'otc'],
   ]) {
     try {
       const byQ = await src.fetchMarginLatest();
       await mergeMargins(byQ);
-      found.push(...Object.keys(byQ));
+      for (const k of Object.keys(byQ)) foundBy[market].add(k);
     } catch (e) {
       await log('warn', `${label}營益分析 OpenAPI：${e.message}`);
     }
   }
-  const latest = found.sort().at(-1) ?? expectedLatestQuarter();
+  const latest = [...foundBy.sii, ...foundBy.otc].sort().at(-1) ?? expectedLatestQuarter();
   // 要還原 4 個單季毛利率，需要這些「累計」季別
   const need = new Set();
   for (let j = 0; j < 4; j++) {
@@ -271,35 +282,18 @@ async function updateMargins() {
     need.add(k);
     if (parseQ(k).q > 1) need.add(shiftQuarter(k, -1));
   }
-  if (found.length) need.delete(latest);
-  const meta = await getMeta();
-  meta.complete ??= {};
-  const list = [...need].sort().reverse();
-  stage('營益分析（觀測站回補）', list.length);
-  for (const k of list) {
-    if (meta.complete[`gm:${k}`]) {
-      state.done++;
-      continue;
-    }
-    const { y, q } = parseQ(k);
-    let ok = true;
-    for (const market of ['sii', 'otc']) {
-      try {
-        const rows = await mops.fetchMarginQuarter(market, y, q);
-        if (Object.keys(rows).length) await mergeMargins({ [k]: rows });
-        else ok = false;
-      } catch (e) {
-        ok = false;
-        await log('warn', `觀測站 ${k} ${market === 'sii' ? '上市' : '上櫃'}營益分析：${e.message}`);
-      }
-    }
-    if (ok) {
-      const m2 = await getMeta();
-      m2.complete = { ...m2.complete, [`gm:${k}`]: true };
-      await saveMeta(m2);
-    }
-    state.done++;
-  }
+  await backfillFromMops({
+    kind: 'gm',
+    label: '營益分析',
+    periods: [...need].sort().reverse(),
+    latest,
+    foundBy,
+    fetchOne: (market, k) => {
+      const { y, q } = parseQ(k);
+      return mops.fetchMarginQuarter(market, y, q);
+    },
+    merge: mergeMargins,
+  });
 }
 
 // ---------- 集保千張大戶 ----------
