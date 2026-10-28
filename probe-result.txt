@@ -1,0 +1,14 @@
+測試日期 20261027
+
+✔ 正常  上市行情  HTTP 200  248335 bytes
+✔ 正常  上市法人  HTTP 200  193382 bytes
+✔ 正常  上市月營收 OpenAPI  HTTP 200  607634 bytes
+✔ 正常  上櫃行情（新版）  HTTP 200  10892 bytes
+✔ 正常  上櫃行情（舊版）  HTTP 200  1965816 bytes
+✔ 正常  上櫃法人（新版）  HTTP 200  143074 bytes
+✔ 正常  上櫃月營收 OpenAPI  HTTP 200  496597 bytes
+✔ 正常  觀測站月營收  HTTP 200  455924 bytes
+✔ 正常  集保股權分散  HTTP 200  2387590 bytes
+✔ 正常  集保個股查詢頁  HTTP 200  69544 bytes
+
+結果：10/10 個來源可用
