@@ -1,0 +1,334 @@
+{
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=2026%2F10%2F27&type=EW&response=json": {
+  "status": 200,
+  "bytes": 140914,
+  "keys": [
+   "tables",
+   "date",
+   "flagField",
+   "stat"
+  ],
+  "stat": "ok",
+  "date": "20261027",
+  "tables": [
+   {
+    "title": "上櫃股票每日收盤行情(不含定價)",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤 ",
+     "漲跌",
+     "開盤 ",
+     "最高 ",
+     "最低",
+     "成交股數  ",
+     " 成交金額(元)",
+     " 成交筆數 ",
+     "最後買價",
+     "最後買量<br>(張數)",
+     "最後賣價",
+     "最後賣量<br>(張數)",
+     "發行股數 ",
+     "次日漲停價 ",
+     "次日跌停價"
+    ],
+    "n": 1020,
+    "first": [
+     "00411A",
+     "主動統一前沿科技",
+     "9.91",
+     "-0.02",
+     "10.10",
+     "10.10",
+     "9.88",
+     "7,769,000",
+     "77,335,430",
+     "989",
+     "9.91",
+     "140",
+     "9.92",
+     "331",
+     "461,076,000",
+     "9,999.95",
+     "0.01"
+    ]
+   }
+  ]
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=2026%2F10%2F27&type=AL&response=json": {
+  "status": 200,
+  "bytes": 1652476,
+  "keys": [
+   "tables",
+   "date",
+   "flagField",
+   "stat"
+  ],
+  "stat": "ok",
+  "date": "20261027",
+  "tables": [
+   {
+    "title": "上櫃股票每日收盤行情(不含定價)",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤 ",
+     "漲跌",
+     "開盤 ",
+     "最高 ",
+     "最低",
+     "成交股數  ",
+     " 成交金額(元)",
+     " 成交筆數 ",
+     "最後買價",
+     "最後買量<br>(張數)",
+     "最後賣價",
+     "最後賣量<br>(張數)",
+     "發行股數 ",
+     "次日漲停價 ",
+     "次日跌停價"
+    ],
+    "n": 13186,
+    "first": [
+     "00411A",
+     "主動統一前沿科技",
+     "9.91",
+     "-0.02",
+     "10.10",
+     "10.10",
+     "9.88",
+     "7,769,000",
+     "77,335,430",
+     "989",
+     "9.91",
+     "140",
+     "9.92",
+     "331",
+     "461,076,000",
+     "9,999.95",
+     "0.01"
+    ]
+   }
+  ]
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQ?date=2026%2F10%2F27&type=EW&response=json": {
+  "status": 200,
+  "bytes": 9437,
+  "text": "<!DOCTYPE html><html lang=\"zh-Hant-tw\"><head><title>404 - 證券櫃檯買賣中心</title><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no\"><meta name=\"author\" content=\"\"><meta name=\"description\" content=\"櫃買中心是國內第一個彙整國內外重要綠色相關標章，並揭示上市櫃公司取得"
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQ?date=2026%2F10%2F27&response=json": {
+  "status": 200,
+  "bytes": 9437,
+  "text": "<!DOCTYPE html><html lang=\"zh-Hant-tw\"><head><title>404 - 證券櫃檯買賣中心</title><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no\"><meta name=\"author\" content=\"\"><meta name=\"description\" content=\"櫃買中心是國內第一個彙整國內外重要綠色相關標章，並揭示上市櫃公司取得"
+ },
+ "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=115%2F10%2F27": {
+  "status": 200,
+  "bytes": 1833590,
+  "keys": [
+   "date",
+   "tables",
+   "flagField",
+   "stat"
+  ],
+  "stat": "ok",
+  "date": "20261028",
+  "tables": [
+   {
+    "title": "上櫃股票行情",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤",
+     "漲跌",
+     "開盤",
+     "最高",
+     "最低",
+     "均價",
+     "成交股數",
+     "成交金額(元)",
+     "成交筆數",
+     "最後買價",
+     "最後買量(張數)",
+     "最後賣價",
+     "最後賣量(張數)",
+     "發行股數",
+     "次日 參考價",
+     "次日 漲停價",
+     "次日 跌停價"
+    ],
+    "n": 13127,
+    "first": [
+     "00411A",
+     "主動統一前沿科技",
+     "10.21",
+     "+0.30",
+     "10.10",
+     "10.25",
+     "10.10",
+     "10.18",
+     "7,233,250",
+     "73,638,449",
+     "1,147",
+     "10.20",
+     "890",
+     "10.21",
+     "30",
+     "460,576,000",
+     "10.21",
+     "9999.95",
+     "0.01"
+    ]
+   },
+   {
+    "title": "管理股票",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤",
+     "漲跌",
+     "開盤",
+     "最高",
+     "最低",
+     "均價",
+     "成交股數",
+     "成交金額(元)",
+     "成交筆數",
+     "最後買價",
+     "最後買量(張數)",
+     "最後賣價",
+     "最後賣量(張數)",
+     "發行股數",
+     "次日 參考價",
+     "次日 漲停價",
+     "次日 跌停價"
+    ],
+    "n": 0
+   }
+  ]
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=2025%2F04%2F15&type=EW&response=json": {
+  "status": 200,
+  "bytes": 132391,
+  "keys": [
+   "tables",
+   "date",
+   "flagField",
+   "stat"
+  ],
+  "stat": "ok",
+  "date": "20250415",
+  "tables": [
+   {
+    "title": "上櫃股票每日收盤行情(不含定價)",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤 ",
+     "漲跌",
+     "開盤 ",
+     "最高 ",
+     "最低",
+     "成交股數  ",
+     " 成交金額(元)",
+     " 成交筆數 ",
+     "最後買價",
+     "最後買量<br>(張數)",
+     "最後賣價",
+     "最後賣量<br>(張數)",
+     "發行股數 ",
+     "次日漲停價 ",
+     "次日跌停價"
+    ],
+    "n": 957,
+    "first": [
+     "00679B",
+     "元大美債20年",
+     "28.22",
+     "+0.37",
+     "28.02",
+     "28.25",
+     "28.02",
+     "100,277,000",
+     "2,826,060,260",
+     "9,623",
+     "28.21",
+     "2,653",
+     "28.22",
+     "653",
+     "9,332,692,000",
+     "9,999.95",
+     "0.01"
+    ]
+   }
+  ]
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=2025%2F04%2F15&type=AL&response=json": {
+  "status": 200,
+  "bytes": 1399935,
+  "keys": [
+   "tables",
+   "date",
+   "flagField",
+   "stat"
+  ],
+  "stat": "ok",
+  "date": "20250415",
+  "tables": [
+   {
+    "title": "上櫃股票每日收盤行情(不含定價)",
+    "fields": [
+     "代號",
+     "名稱",
+     "收盤 ",
+     "漲跌",
+     "開盤 ",
+     "最高 ",
+     "最低",
+     "成交股數  ",
+     " 成交金額(元)",
+     " 成交筆數 ",
+     "最後買價",
+     "最後買量<br>(張數)",
+     "最後賣價",
+     "最後賣量<br>(張數)",
+     "發行股數 ",
+     "次日漲停價 ",
+     "次日跌停價"
+    ],
+    "n": 11336,
+    "first": [
+     "00679B",
+     "元大美債20年",
+     "28.22",
+     "+0.37",
+     "28.02",
+     "28.25",
+     "28.02",
+     "100,277,000",
+     "2,826,060,260",
+     "9,623",
+     "28.21",
+     "2,653",
+     "28.22",
+     "653",
+     "9,332,692,000",
+     "9,999.95",
+     "0.01"
+    ]
+   }
+  ]
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQ?date=2025%2F04%2F15&type=EW&response=json": {
+  "status": 200,
+  "bytes": 9437,
+  "text": "<!DOCTYPE html><html lang=\"zh-Hant-tw\"><head><title>404 - 證券櫃檯買賣中心</title><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no\"><meta name=\"author\" content=\"\"><meta name=\"description\" content=\"櫃買中心是國內第一個彙整國內外重要綠色相關標章，並揭示上市櫃公司取得"
+ },
+ "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQ?date=2025%2F04%2F15&response=json": {
+  "status": 200,
+  "bytes": 9437,
+  "text": "<!DOCTYPE html><html lang=\"zh-Hant-tw\"><head><title>404 - 證券櫃檯買賣中心</title><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no\"><meta name=\"author\" content=\"\"><meta name=\"description\" content=\"櫃買中心是國內第一個彙整國內外重要綠色相關標章，並揭示上市櫃公司取得"
+ },
+ "https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=114%2F04%2F15": {
+  "error": "terminated"
+ }
+}
