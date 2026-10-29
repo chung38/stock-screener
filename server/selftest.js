@@ -210,6 +210,17 @@ test('個股明細有均線與扣抵位置', () => {
 });
 test('技術面資料不足時回報原因', () => assert.equal(technical({ c: [1, 2], h: [], l: [], v: [] }, {}).ok, false));
 
+const { runBacktest, currentBreakouts } = await import('./screener/breakout.js');
+const { loadData } = await import('./screener/data.js');
+const DD = await loadData({ priceDays: 600 });
+const bt = runBacktest(DD);
+test('突破回測可以執行並產生五組條件', () => {
+  assert.equal(bt.variants.length, 5);
+  assert.ok(bt.variants[0].signals >= bt.variants[1].signals, '加量能條件後次數不應增加');
+  assert.ok(bt.buckets.length >= 4);
+});
+test('今日突破訊號可以執行', () => assert.ok(Array.isArray(currentBreakouts(DD).list)));
+
 const swing = res.list.filter((r) => r.entry === 'swing').length;
 console.log(`\n名單 ${res.list.length} 檔（波段進場訊號 ${swing} 檔）、錯殺 ${res.panic.length} 檔，大盤：${res.market.level}`);
 console.log(res.coverage.warnings.length ? `資料提醒：${res.coverage.warnings.join('；')}` : '資料提醒：無');

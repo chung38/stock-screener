@@ -3,6 +3,7 @@
 // - 靜態模式（GitHub Pages，VITE_STATIC=1）：下載 data.json，在瀏覽器裡篩選
 import { DEFAULTS, screenData, detailData } from '../../server/screener/core.js';
 import { unpack } from '../../server/screener/bundle.js';
+import { currentBreakouts } from '../../server/screener/breakout.js';
 
 export const STATIC = import.meta.env.VITE_STATIC === '1';
 export const REPO = import.meta.env.VITE_REPO || '';
@@ -63,6 +64,28 @@ export async function getStock(code, params) {
   const d = D && detailData(D, code, params);
   if (!d) throw new Error('找不到這檔股票的資料');
   return d;
+}
+
+export async function getBreakouts(params) {
+  if (!STATIC) return api(`/api/breakout?${qs(params)}`);
+  const { D } = await loadBundle();
+  return currentBreakouts(D ?? EMPTY, params);
+}
+
+let backtestPromise = null;
+export function getBacktest() {
+  if (!STATIC) return (backtestPromise ??= api('/api/backtest').catch((e) => ((backtestPromise = null), Promise.reject(e))));
+  backtestPromise ??= fetch(`backtest.json?t=${Math.floor(Date.now() / 600000)}`)
+    .then((r) => {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`讀取回測結果失敗（${r.status}）`);
+      return r.json();
+    })
+    .catch((e) => {
+      backtestPromise = null;
+      throw e;
+    });
+  return backtestPromise;
 }
 
 export async function getStatus() {

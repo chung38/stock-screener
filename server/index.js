@@ -18,6 +18,8 @@ import {
 import { runScreen, stockDetail, DEFAULTS } from './screener/screen.js';
 import { runUpdate, runHoldersOnly, getStatus } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
+import { loadData } from './screener/data.js';
+import { currentBreakouts, runBacktest } from './screener/breakout.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -43,6 +45,16 @@ const wrap = (fn) => (req, res) =>
 app.get(
   '/api/screen',
   wrap(async (req, res) => res.json(await runScreen(req.query))),
+);
+
+app.get(
+  '/api/breakout',
+  wrap(async (req, res) => res.json(currentBreakouts(await loadData(), req.query))),
+);
+
+app.get(
+  '/api/backtest',
+  wrap(async (req, res) => res.json(runBacktest(await loadData({ priceDays: 600 })))),
 );
 
 app.get('/api/defaults', (req, res) => res.json(DEFAULTS));

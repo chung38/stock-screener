@@ -16,7 +16,7 @@ export const PORT = Number(process.env.PORT || 3000);
 // 所有累積的資料都存在這裡；部署時請掛在「不會被清掉」的磁碟上
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 
-// 首次回補要抓幾個交易日的股價（季線 60 日 + 扣抵預看 + 60 日高點，90 天足夠）
+// 首次回補要抓幾個交易日的股價（篩選 90 天足夠；突破策略回測建議 500 天，用 PRICE_DAYS=500 npm run backfill）
 export const PRICE_DAYS = Number(process.env.PRICE_DAYS || 90);
 
 // 法人買賣超回補天數（篩選只用近 5 日，多抓幾天方便看趨勢）

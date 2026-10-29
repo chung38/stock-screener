@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { runUpdate, jobState } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
-import { exportBundle, pruneOld } from './jobs/export.js';
+import { exportBundle, exportBacktest, pruneOld } from './jobs/export.js';
 
 const cmd = process.argv[2];
 
@@ -28,8 +28,12 @@ if (cmd === 'diagnose') {
   const out = path.resolve(process.argv[3] || 'dist/data.json');
   const r = await exportBundle(out);
   console.log(`已輸出 ${r.file}：${r.stocks} 檔股票，${r.kb} KB`);
+} else if (cmd === 'backtest') {
+  const out = path.resolve(process.argv[3] || 'dist/backtest.json');
+  const r = await exportBacktest(out);
+  console.log(`已輸出 ${r.file}：${r.days} 個交易日，交易數 ${r.variants}`);
 } else {
-  console.log('用法：node server/cli.js update | backfill | diagnose | export [輸出檔]');
+  console.log('用法：node server/cli.js update | backfill | diagnose | export [輸出檔] | backtest [輸出檔]');
 }
 
 process.exit(process.exitCode ?? 0);

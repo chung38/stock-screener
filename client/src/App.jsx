@@ -6,6 +6,7 @@ import ResultList from './components/ResultList.jsx';
 import PanicView from './components/PanicView.jsx';
 import StockDrawer from './components/StockDrawer.jsx';
 import StatusView from './components/StatusView.jsx';
+import BreakoutView from './components/BreakoutView.jsx';
 import ResonanceRings from './components/ResonanceRings.jsx';
 
 const LS_KEY = 'screener.params.v1';
@@ -145,11 +146,14 @@ export default function App() {
         <button type="button" className={tab === 'panic' ? 'on' : ''} onClick={() => setTab('panic')}>
           錯殺逆勢<span className="num">{data?.panic.length ?? '—'}</span>
         </button>
+        <button type="button" className={tab === 'breakout' ? 'on' : ''} onClick={() => setTab('breakout')}>
+          突破策略
+        </button>
         <button type="button" className={tab === 'status' ? 'on' : ''} onClick={() => setTab('status')}>
           資料狀態
           {data?.coverage.warnings.length ? <span className="warn-dot" aria-label="有資料提醒" /> : null}
         </button>
-        {tab !== 'status' && (
+        {(tab === 'list' || tab === 'panic') && (
           <button type="button" className="filters-toggle" onClick={() => setFiltersOpen((x) => !x)}>
             篩選
           </button>
@@ -157,7 +161,7 @@ export default function App() {
       </nav>
 
       <div className="layout">
-        {tab !== 'status' && params && defaults && (
+        {(tab === 'list' || tab === 'panic') && params && defaults && (
           <div className={`side${filtersOpen ? ' open' : ''}`}>
             <FilterPanel params={params} defaults={defaults} onApply={apply} onClose={() => setFiltersOpen(false)} />
           </div>
@@ -166,7 +170,7 @@ export default function App() {
         <main className="main">
           {error && <div className="error">{error}</div>}
 
-          {noData && tab !== 'status' && (
+          {noData && (tab === 'list' || tab === 'panic') && (
             STATIC ? (
               <section className="onboard">
                 <h2>資料準備中</h2>
@@ -251,6 +255,10 @@ export default function App() {
           )}
 
           {tab === 'panic' && data && !noData && <PanicView data={data} onPick={setPicked} selected={picked} />}
+
+          {tab === 'breakout' && (
+            <BreakoutView onPick={setPicked} selected={picked} resonance={new Set((data?.list ?? []).map((x) => x.code))} />
+          )}
 
           {tab === 'status' && <StatusView status={status} coverage={data?.coverage} onUpdate={doUpdate} />}
         </main>
