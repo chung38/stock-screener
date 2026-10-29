@@ -296,9 +296,41 @@ function stats(trades) {
     win: r2((xs.filter((x) => x > 0).length / n) * 100),
     pf: losses > 0 ? r2(gains / losses) : null,
     t: sd > 0 ? r2(avg / (sd / Math.sqrt(n))) : null,
+    tDay: tByDay(trades),
+    episodes: episodes(trades),
+    signalDays: new Set(trades.map((t) => t.sd)).size,
     days: r2(trades.reduce((a, t) => a + t.days, 0) / n),
     worst: r2(sorted[0]),
   };
+}
+
+// 同一天的訊號彼此高度相關（同一波行情），先按訊號日平均再算 t 值，比較保守
+function tByDay(trades) {
+  const by = new Map();
+  for (const t of trades) {
+    const a = by.get(t.sd) ?? [0, 0];
+    a[0] += t.ret;
+    a[1]++;
+    by.set(t.sd, a);
+  }
+  const xs = [...by.values()].map(([s, c]) => s / c);
+  const n = xs.length;
+  if (n < 3) return null;
+  const avg = xs.reduce((a, x) => a + x, 0) / n;
+  const sd = Math.sqrt(xs.reduce((a, x) => a + (x - avg) ** 2, 0) / (n - 1));
+  return sd > 0 ? r2(avg / (sd / Math.sqrt(n))) : null;
+}
+
+// 獨立行情段數：訊號日之間隔超過 10 個交易日就算新的一段
+function episodes(trades) {
+  const gs = [...new Set(trades.map((t) => t.g))].sort((a, b) => a - b);
+  let n = 0;
+  let last = -Infinity;
+  for (const g of gs) {
+    if (g - last > 10) n++;
+    last = g;
+  }
+  return n;
 }
 
 // ---------------- 主程式 ----------------
@@ -385,6 +417,28 @@ export function runLab(A, { onProgress = () => {} } = {}) {
   const ret = (a, b) => (tx[a] && tx[b] ? r2((tx[b] / tx[a] - 1) * 100) : null);
   const benchmark = { all: ret(firstG, lastG), is: ret(firstG, splitG), oos: ret(splitG, lastG) };
 
+  // 等權大盤：每天把所有符合流動性的股票平均報酬累乘（比加權指數更像「一般股票」的表現）
+  const ewDaily = new Array(A.dates.length).fill(null);
+  {
+    const sum = new Array(A.dates.length).fill(0);
+    const cnt = new Array(A.dates.length).fill(0);
+    for (const code of codes) {
+      const s = A.series[code];
+      for (let i = 1; i < s.c.length; i++) {
+        if (!s.liquid[i - 1] || s.bad[i] || s.g[i] !== s.g[i - 1] + 1) continue;
+        sum[s.g[i]] += s.c[i] / s.c[i - 1] - 1;
+        cnt[s.g[i]]++;
+      }
+    }
+    for (let g = 0; g < sum.length; g++) ewDaily[g] = cnt[g] >= 50 ? sum[g] / cnt[g] : null;
+  }
+  const ewRet = (a, b) => {
+    let v = 1;
+    for (let g = a + 1; g <= b; g++) if (ewDaily[g] != null) v *= 1 + ewDaily[g];
+    return r2((v - 1) * 100);
+  };
+  const equalWeight = { all: ewRet(firstG, lastG), is: ewRet(firstG, splitG), oos: ewRet(splitG, lastG) };
+
   // ---- 策略家族 ----
   const families = [];
   function runFamily(id, name, combos, signalFor) {
@@ -453,7 +507,8 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     if (!(is.n >= 30) || !(oos.n >= 15)) return 'few';
     if (!(is.avg > 0)) return 'no';
     if (!(oos.avg > 0) || !(oos.excess > 0) || !(is.excess > 0)) return 'illusion';
-    if (r.all.t >= 2) return 'robust';
+    // 用「按訊號日平均」的 t 值；事件型策略（如錯殺）還要至少 5 段獨立行情，避免結果只來自一兩次大跌
+    if (r.all.tDay >= 2 && (r.all.episodes >= 5 || r.all.signalDays >= 150)) return 'robust';
     return 'weak';
   };
   for (const f of families) {
@@ -470,6 +525,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
   onProgress('濾網');
   const FILTERS = [
     ['none', '不加濾網', null],
+    ['mkt', '＋大盤在季線之上', (c, g) => mktUp(g) === true],
     ['rev', '＋營收 3 個月年增 > 20%', (c, g) => F.revPass(c, g) === true],
     ['gm', '＋毛利率連 2 季改善', (c, g) => F.gmPass(c, g) === true],
     ['trust', '＋投信近 5 日買超', (c, g) => F.trustPass(c, g) === true],
@@ -514,6 +570,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     dividendAdjusted: A.dividends,
     exits: Object.fromEntries(Object.entries(EXITS).map(([k, v]) => [k, v.name])),
     benchmark,
+    equalWeight,
     baselines,
     families,
     filterTables,

@@ -3,7 +3,7 @@ import { getResearch } from '../api.js';
 import { fmtNum, fmtPct, fmtDate, tone } from '../format.js';
 
 const VERDICT = {
-  robust: { text: '樣本內外都賺', cls: 'v-robust', tip: '前 2/3 與後 1/3 期間都賺錢、都勝過隨機進場，整體統計上可信（t ≥ 2）' },
+  robust: { text: '樣本內外都賺', cls: 'v-robust', tip: '前 2/3 與後 1/3 期間都賺錢、都勝過隨機進場，而且按訊號日計算的 t 值 ≥ 2' },
   weak: { text: '都賺但證據弱', cls: 'v-weak', tip: '兩段都賺錢也勝過隨機，但差距可能只是運氣（t < 2）' },
   illusion: { text: '看似有效是假象', cls: 'v-illusion', tip: '前段賺錢，後段沒賺或輸給隨機進場' },
   no: { text: '前段就不賺', cls: 'v-no', tip: '樣本內扣成本後就是虧損' },
@@ -67,6 +67,7 @@ function Family({ f, exits }) {
               <th colSpan={3}>樣本內（前 2/3）</th>
               <th colSpan={3}>樣本外（後 1/3）</th>
               <th rowSpan={2}>樣本外勝過隨機</th>
+              <th rowSpan={2}>t 值（按日）</th>
               <th rowSpan={2}>判定</th>
             </tr>
             <tr>
@@ -85,6 +86,9 @@ function Family({ f, exits }) {
                 <SplitCells s={r.is} />
                 <SplitCells s={r.oos} />
                 <td className={`num ${tone(r.oos.excess)}`}>{pct(r.oos.excess)}</td>
+                <td className="num" title={`${r.all.signalDays} 個訊號日、${r.all.episodes} 段獨立行情`}>
+                  {fmtNum(r.all.tDay, 1)}
+                </td>
                 <td>
                   <Verdict v={r.verdict} />
                 </td>
@@ -95,7 +99,7 @@ function Family({ f, exits }) {
       </div>
       {best && (
         <p className="muted small">
-          第一名在大盤季線之上時每筆平均 {pct(best.up?.avg)}（{best.up?.n ?? 0} 筆），季線之下時 {pct(best.down?.avg)}（{best.down?.n ?? 0}{' '}
+          t 值按訊號日平均後計算（同一天的訊號視為一次），比逐筆計算保守。第一名在大盤季線之上時每筆平均 {pct(best.up?.avg)}（{best.up?.n ?? 0} 筆），季線之下時 {pct(best.down?.avg)}（{best.down?.n ?? 0}{' '}
           筆）。出場方式：{exits[best.exit]}。
         </p>
       )}
@@ -139,6 +143,16 @@ export default function ResearchView() {
               <b className={`num ${tone(r.benchmark.oos)}`}>{pct(r.benchmark.oos, 1)}</b>
             </dd>
           </div>
+          {r.equalWeight && (
+            <div>
+              <dt>等權平均（一般股票）</dt>
+              <dd>
+                全期 <b className={`num ${tone(r.equalWeight.all)}`}>{pct(r.equalWeight.all, 1)}</b>，前段{' '}
+                <b className={`num ${tone(r.equalWeight.is)}`}>{pct(r.equalWeight.is, 1)}</b>，後段{' '}
+                <b className={`num ${tone(r.equalWeight.oos)}`}>{pct(r.equalWeight.oos, 1)}</b>
+              </dd>
+            </div>
+          )}
           <div>
             <dt>隨機進場、持有 10 天</dt>
             <dd>
@@ -155,7 +169,7 @@ export default function ResearchView() {
                 <b>{x.label}</b>
                 <span>
                   {x.family}｜全期 {x.all.n} 筆、每筆平均 <em className={tone(x.all.avg)}>{pct(x.all.avg)}</em>、勝率 {fmtNum(x.all.win, 0)}%、樣本外{' '}
-                  <em className={tone(x.oos.avg)}>{pct(x.oos.avg)}</em>
+                  <em className={tone(x.oos.avg)}>{pct(x.oos.avg)}</em>；大盤季線上 {pct(x.up?.avg)}、季線下 {pct(x.down?.avg)}（{x.down?.n ?? 0} 筆）
                 </span>
               </li>
             ))}
