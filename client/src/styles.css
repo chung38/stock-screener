@@ -1724,3 +1724,110 @@ button.link {
 .rule-bar .field.inline {
   flex-wrap: wrap;
 }
+
+/* ---------- 策略績效 ---------- */
+.research-table th[colspan],
+.research-table thead tr:first-child th {
+  text-align: center;
+}
+.research-table thead tr:first-child th:first-child {
+  text-align: left;
+}
+.research-table tbody th {
+  max-width: 340px;
+}
+.verdict-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.v-robust {
+  background: var(--tech);
+  color: #fff;
+}
+.v-weak {
+  background: var(--tech-soft);
+  color: var(--tech);
+}
+.v-illusion {
+  background: var(--caution-soft);
+  color: var(--warn);
+}
+.v-no {
+  background: var(--panic-soft);
+  color: var(--panic);
+}
+.v-few {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.bench {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+}
+.bench div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.bench dt {
+  color: var(--muted);
+  min-width: 140px;
+}
+.bench dd {
+  margin: 0;
+}
+.pass-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.pass-list li {
+  border-left: 3px solid var(--tech);
+  padding: 2px 0 2px 12px;
+}
+.pass-list.weak li {
+  border-left-color: var(--tech-soft);
+}
+.pass-list b {
+  display: block;
+}
+.pass-list span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.pass-list em {
+  font-style: normal;
+  font-weight: 600;
+}
+.filter-block {
+  margin-top: 14px;
+}
+.eq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.eq-curve {
+  display: block;
+  max-width: 100%;
+}
+.eq-curve polyline {
+  fill: none;
+  stroke-width: 1.8;
+}
+.eq-curve polyline.up {
+  stroke: var(--up);
+}
+.eq-curve polyline.down {
+  stroke: var(--down);
+}
+.eq-base {
+  stroke: var(--line-strong);
+  stroke-dasharray: 3 3;
+}

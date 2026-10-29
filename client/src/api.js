@@ -88,6 +88,22 @@ export function getBacktest() {
   return backtestPromise;
 }
 
+let researchPromise = null;
+export function getResearch() {
+  if (!STATIC) return (researchPromise ??= api('/api/research').catch((e) => ((researchPromise = null), Promise.reject(e))));
+  researchPromise ??= fetch(`research.json?t=${Math.floor(Date.now() / 600000)}`)
+    .then((r) => {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`讀取策略研究結果失敗（${r.status}）`);
+      return r.json();
+    })
+    .catch((e) => {
+      researchPromise = null;
+      throw e;
+    });
+  return researchPromise;
+}
+
 export async function getStatus() {
   if (!STATIC) return api('/api/status');
   const { B } = await loadBundle();

@@ -57,6 +57,19 @@ app.get(
   wrap(async (req, res) => res.json(runBacktest(await loadData({ priceDays: 600 })))),
 );
 
+let researchCache = null;
+app.get(
+  '/api/research',
+  wrap(async (req, res) => {
+    if (!researchCache || Date.now() - researchCache.at > 3600e3) {
+      const { loadAll } = await import('./research/load.js');
+      const { runLab } = await import('./research/lab.js');
+      researchCache = { at: Date.now(), data: runLab(await loadAll()) };
+    }
+    res.json(researchCache.data);
+  }),
+);
+
 app.get('/api/defaults', (req, res) => res.json(DEFAULTS));
 
 app.get(

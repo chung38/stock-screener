@@ -74,6 +74,7 @@ jobs:
           VITE_STATIC=1 VITE_REPO=${{ github.repository }} npx vite build --base ./
           node server/cli.js export dist/data.json
           node server/cli.js backtest dist/backtest.json
+          node server/cli.js research dist/research.json
 
       - uses: actions/configure-pages@v5
 

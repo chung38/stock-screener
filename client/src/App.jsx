@@ -7,6 +7,7 @@ import PanicView from './components/PanicView.jsx';
 import StockDrawer from './components/StockDrawer.jsx';
 import StatusView from './components/StatusView.jsx';
 import BreakoutView from './components/BreakoutView.jsx';
+import ResearchView from './components/ResearchView.jsx';
 import ResonanceRings from './components/ResonanceRings.jsx';
 
 const LS_KEY = 'screener.params.v1';
@@ -149,6 +150,9 @@ export default function App() {
         <button type="button" className={tab === 'breakout' ? 'on' : ''} onClick={() => setTab('breakout')}>
           突破策略
         </button>
+        <button type="button" className={tab === 'research' ? 'on' : ''} onClick={() => setTab('research')}>
+          策略績效
+        </button>
         <button type="button" className={tab === 'status' ? 'on' : ''} onClick={() => setTab('status')}>
           資料狀態
           {data?.coverage.warnings.length ? <span className="warn-dot" aria-label="有資料提醒" /> : null}
@@ -259,6 +263,8 @@ export default function App() {
           {tab === 'breakout' && (
             <BreakoutView onPick={setPicked} selected={picked} resonance={new Set((data?.list ?? []).map((x) => x.code))} />
           )}
+
+          {tab === 'research' && <ResearchView />}
 
           {tab === 'status' && <StatusView status={status} coverage={data?.coverage} onUpdate={doUpdate} />}
         </main>
