@@ -107,6 +107,95 @@ function Family({ f, exits }) {
   );
 }
 
+const HOLD = { H1: '當沖', H3: '3 天', H5: '5 天', H10: '10 天' };
+
+function ShortTerm({ r }) {
+  const list = r.shortTerm ?? [];
+  if (!list.length) return null;
+  const rp = r.randomPortfolio ?? {};
+  const bh = r.buyHold ?? {};
+  const beatRandom = (x) => x.portfolio.cagr != null && rp[x.exit]?.cagr != null && x.portfolio.cagr > rp[x.exit].cagr;
+  return (
+    <section className="card">
+      <h2>短線持有：我們的策略 vs 坊間常用指標</h2>
+      <p className="muted small">
+        每個方法都試了當沖、持有 3／5／10 天，用前 2/3 期間挑出最好的持有天數，再看後 1/3 期間。「資金曲線」是全部訊號照做、最多同時 10 檔、每檔 1/10
+        資金的實際帳戶結果（已扣成本），依年化報酬排序。
+      </p>
+      <dl className="bench">
+        <div>
+          <dt>什麼都不做，買大盤放著</dt>
+          <dd>
+            加權指數年化 <b className={`num ${tone(bh.taiex)}`}>{pct(bh.taiex, 1)}</b>，等權平均年化{' '}
+            <b className={`num ${tone(bh.equalWeight)}`}>{pct(bh.equalWeight, 1)}</b>
+          </dd>
+        </div>
+        <div>
+          <dt>每天隨機亂買（同樣最多 10 檔）</dt>
+          <dd>
+            {['H1', 'H3', 'H5', 'H10'].map((k) => (
+              <span key={k} className="rp-item">
+                {HOLD[k]} <b className={`num ${tone(rp[k]?.cagr)}`}>{pct(rp[k]?.cagr, 1)}</b>
+              </span>
+            ))}
+          </dd>
+        </div>
+      </dl>
+      <div className="table-scroll">
+        <table className="bt-table research-table short-table">
+          <thead>
+            <tr>
+              <th rowSpan={2}>方法</th>
+              <th rowSpan={2}>持有</th>
+              <th colSpan={2}>每筆平均（扣成本）</th>
+              <th rowSpan={2}>樣本外勝過隨機</th>
+              <th colSpan={2}>大盤季線</th>
+              <th colSpan={3}>資金曲線</th>
+              <th rowSpan={2}>判定</th>
+            </tr>
+            <tr>
+              <th>樣本內</th>
+              <th>樣本外</th>
+              <th>之上</th>
+              <th>之下</th>
+              <th>年化</th>
+              <th>最大回撤</th>
+              <th>勝過亂買</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((x) => (
+              <tr key={x.id} className={x.group === 'ours' ? 'ours' : ''}>
+                <th scope="row">
+                  <span className={`grp grp-${x.group}`}>{x.group === 'ours' ? '本程式' : '坊間'}</span>
+                  {x.name}
+                </th>
+                <td>{HOLD[x.exit] ?? x.exit}</td>
+                <td className={`num ${tone(x.is.avg)}`}>{pct(x.is.avg)}</td>
+                <td className={`num ${tone(x.oos.avg)}`}>{pct(x.oos.avg)}</td>
+                <td className={`num ${tone(x.oos.excess)}`}>{pct(x.oos.excess)}</td>
+                <td className={`num ${tone(x.up?.avg)}`}>{pct(x.up?.avg)}</td>
+                <td className={`num ${tone(x.down?.avg)}`} title={`${x.down?.n ?? 0} 筆`}>
+                  {pct(x.down?.avg)}
+                </td>
+                <td className={`num ${tone(x.portfolio.cagr)}`}>{pct(x.portfolio.cagr, 1)}</td>
+                <td className="num down">{pct(x.portfolio.mdd, 1)}</td>
+                <td>{beatRandom(x) ? '是' : '否'}</td>
+                <td>
+                  <Verdict v={x.verdict} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">
+        「每筆平均」把當沖的證交稅減半（0.15%）算進去；其他持有天數每筆扣 {fmtNum(r.costPct, 3)}%。持有天數越短，成本占報酬的比例越高。
+      </p>
+    </section>
+  );
+}
+
 export default function ResearchView() {
   const [r, setR] = useState(undefined);
   const [err, setErr] = useState('');
@@ -193,6 +282,8 @@ export default function ResearchView() {
           </>
         )}
       </section>
+
+      <ShortTerm r={r} />
 
       {r.families.map((f) => (
         <Family key={f.id} f={f} exits={r.exits} />

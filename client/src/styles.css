@@ -1831,3 +1831,32 @@ button.link {
   stroke: var(--line-strong);
   stroke-dasharray: 3 3;
 }
+
+/* 短線比較表 */
+.rp-item {
+  margin-right: 12px;
+  white-space: nowrap;
+}
+.short-table tbody th {
+  min-width: 220px;
+}
+.short-table tr.ours th {
+  font-weight: 600;
+}
+.grp {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  font-weight: 500;
+}
+.grp-ours {
+  background: var(--tech-soft);
+  color: var(--tech);
+}
+.grp-popular {
+  background: var(--surface-2);
+  color: var(--muted);
+}

@@ -70,6 +70,55 @@ function prepare(s) {
     }
   }
   s.liquid = s.c.map((c, i) => c >= MIN_PRICE && s.avgV[i] != null && s.avgV[i] / 1000 >= MIN_LOTS);
+  s.ma10 = sma(s.c, 10);
+
+  // KD(9,3,3)：台灣常用算法，K、D 初始 50
+  s.k = new Array(n).fill(null);
+  s.dd = new Array(n).fill(null);
+  let k = 50;
+  let d = 50;
+  for (let i = 8; i < n; i++) {
+    let hi = -Infinity;
+    let lo = Infinity;
+    for (let j = i - 8; j <= i; j++) {
+      if (s.h[j] > hi) hi = s.h[j];
+      if (s.l[j] < lo) lo = s.l[j];
+    }
+    const rsv = hi > lo ? ((s.c[i] - lo) / (hi - lo)) * 100 : 50;
+    k = (2 / 3) * k + rsv / 3;
+    d = (2 / 3) * d + k / 3;
+    s.k[i] = k;
+    s.dd[i] = d;
+  }
+
+  // MACD(12,26,9)
+  const ema = (arr, span) => {
+    const a = 2 / (span + 1);
+    const out = new Array(n).fill(null);
+    let e = arr[0];
+    for (let i = 0; i < n; i++) {
+      e = i === 0 ? arr[0] : a * arr[i] + (1 - a) * e;
+      out[i] = e;
+    }
+    return out;
+  };
+  const e12 = ema(s.c, 12);
+  const e26 = ema(s.c, 26);
+  s.dif = s.c.map((_, i) => (i >= 25 ? e12[i] - e26[i] : null));
+  const sigLine = ema(s.dif.map((x) => x ?? 0), 9);
+  s.macdSig = s.dif.map((x, i) => (i >= 34 ? sigLine[i] : null));
+
+  // 布林通道(20, 2)
+  s.bbU = new Array(n).fill(null);
+  s.bbL = new Array(n).fill(null);
+  for (let i = 19; i < n; i++) {
+    const m = s.ma20[i];
+    let v = 0;
+    for (let j = i - 19; j <= i; j++) v += (s.c[j] - m) ** 2;
+    const sd = Math.sqrt(v / 20);
+    s.bbU[i] = m + 2 * sd;
+    s.bbL[i] = m - 2 * sd;
+  }
 }
 
 // ---------------- 基本面（依公布時點） ----------------
@@ -170,6 +219,8 @@ function makeFundamentals(A) {
 // ---------------- 交易模擬 ----------------
 
 const EXITS = {
+  H1: { name: '當天收盤賣（當沖）', type: 'hold', n: 1 },
+  H3: { name: '持有 3 天', type: 'hold', n: 3 },
   H5: { name: '持有 5 天', type: 'hold', n: 5 },
   H10: { name: '持有 10 天', type: 'hold', n: 10 },
   H20: { name: '持有 20 天', type: 'hold', n: 20 },
@@ -210,7 +261,9 @@ function simulate(s, i, exitId) {
     if (x == null) return null;
   }
   for (let k = e; k <= x; k++) if (s.bad[k]) return null; // 期間有減資／分割等異常
-  return { e, x, ret: (s.c[x] / entry - 1) * 100 - ROUND_TRIP, days: x - e + 1 };
+  // 當沖：證交稅 0.3% 減半為 0.15%
+  const cost = x === e ? ROUND_TRIP - 0.15 : ROUND_TRIP;
+  return { e, x, ret: (s.c[x] / entry - 1) * 100 - cost, days: x - e + 1, cost };
 }
 
 // ---------------- 訊號 ----------------
@@ -278,6 +331,44 @@ function panicSignals(s, drop) {
   return out;
 }
 
+// 坊間常見技術指標：訊號都在收盤後確認，同一檔 5 天內只取第一次
+const crossUp = (a, b, i) => a[i] != null && b[i] != null && a[i - 1] != null && b[i - 1] != null && a[i] > b[i] && a[i - 1] <= b[i - 1];
+export const INDICATORS = [
+  ['kdLow', 'KD 低檔黃金交叉（K < 20）', (s, i) => crossUp(s.k, s.dd, i) && s.k[i - 1] < 20],
+  ['kd', 'KD 黃金交叉（不限位置）', (s, i) => crossUp(s.k, s.dd, i)],
+  ['macd', 'MACD 黃金交叉', (s, i) => crossUp(s.dif, s.macdSig, i)],
+  ['macdNeg', 'MACD 零軸下黃金交叉', (s, i) => crossUp(s.dif, s.macdSig, i) && s.dif[i] < 0],
+  ['rsi', 'RSI(6) 從 20 以下回升', (s, i) => s.rsi6[i - 1] != null && s.rsi6[i - 1] < 20 && s.rsi6[i] >= 20],
+  ['bbLow', '跌破布林下軌（逆勢）', (s, i) => s.bbL[i] != null && s.c[i] < s.bbL[i] && s.c[i - 1] >= s.bbL[i - 1]],
+  ['bbUp', '突破布林上軌（順勢）', (s, i) => s.bbU[i] != null && s.c[i] > s.bbU[i] && s.c[i - 1] <= s.bbU[i - 1]],
+  ['ma520', '5 日線向上穿越 20 日線', (s, i) => crossUp(s.ma5, s.ma20, i)],
+  ['ma2060', '20 日線向上穿越 60 日線', (s, i) => crossUp(s.ma20, s.ma60, i)],
+  [
+    'bull',
+    '均線多頭排列（5 > 10 > 20 > 60）首日',
+    (s, i) => {
+      const on = (j) => s.ma60[j] != null && s.ma5[j] > s.ma10[j] && s.ma10[j] > s.ma20[j] && s.ma20[j] > s.ma60[j];
+      return on(i) && !on(i - 1);
+    },
+  ],
+  ['bigRed', '爆量長紅（漲 > 5%、量 > 2 倍均量）', (s, i) => s.c[i] / s.c[i - 1] > 1.05 && s.c[i] > s.o[i] && s.v[i] > 2 * s.avgV[i]],
+  ['limitUp', '漲停板隔天追進', (s, i) => s.c[i] / s.c[i - 1] >= 1.095 && s.c[i] === s.h[i]],
+  ['gap', '跳空上漲（開盤高於前日最高、收紅）', (s, i) => s.o[i] > s.h[i - 1] && s.c[i] > s.o[i]],
+];
+
+function indicatorSignals(s, test) {
+  const out = [];
+  let last = -Infinity;
+  for (let i = 61; i < s.c.length; i++) {
+    if (!s.liquid[i] || i - last < 5) continue;
+    if (test(s, i)) {
+      out.push(i);
+      last = i;
+    }
+  }
+  return out;
+}
+
 // ---------------- 統計 ----------------
 
 function stats(trades) {
@@ -338,7 +429,10 @@ function episodes(trades) {
 export function runLab(A, { onProgress = () => {} } = {}) {
   const t0 = Date.now();
   const codes = Object.keys(A.series).filter((c) => A.series[c].c.length >= 80);
-  for (const c of codes) prepare(A.series[c]);
+  for (const c of codes) {
+    A.series[c].code = c;
+    prepare(A.series[c]);
+  }
   const F = makeFundamentals(A);
   const split = A.dates[Math.floor(A.dates.length * (2 / 3))];
   const part = (t) => (t.sd < split ? 'is' : 'oos');
@@ -375,7 +469,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
         if (filter && !filter(code, g)) continue;
         const t = simulate(s, i, exitId);
         if (!t) continue;
-        out.push({ code, sd: s.d[i], g, ret: t.ret, days: t.days, ed: s.d[t.e], xd: s.d[t.x], s, e: t.e, x: t.x });
+        out.push({ code, sd: s.d[i], g, ret: t.ret, days: t.days, cost: t.cost, ed: s.d[t.e], xd: s.d[t.x], s, e: t.e, x: t.x });
       }
     }
     return out;
@@ -464,7 +558,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
   for (const lb of [20, 60, 120])
     for (const vm of [0, 1.5, 2, 3])
       for (const hd of [0, 1, 2, 3])
-        for (const exit of ['H5', 'H10', 'H20', 'MA20'])
+        for (const exit of ['H3', 'H5', 'H10', 'H20', 'MA20'])
           boCombos.push({
             id: `BO-${lb}-${vm}-${hd}-${exit}`,
             label: `突破 ${lb} 日前高、量比 ${vm || '不限'}、站穩 ${hd} 天、${EXITS[exit].name}`,
@@ -476,7 +570,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
   const pbCombos = [];
   for (const key of [20, 60])
     for (const tol of [2, 4])
-      for (const exit of ['H5', 'H10', 'H20', 'MA20'])
+      for (const exit of ['H3', 'H5', 'H10', 'H20', 'MA20'])
         pbCombos.push({
           id: `PB-${key}-${tol}-${exit}`,
           label: `趨勢向上回測${key === 60 ? '季線' : '月線'}不破（${tol}% 內）、${EXITS[exit].name}`,
@@ -487,7 +581,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
 
   const pnCombos = [];
   for (const drop of [10, 15, 20])
-    for (const exit of ['REB', 'H5', 'H10'])
+    for (const exit of ['REB', 'H3', 'H5', 'H10'])
       for (const onlyPanic of [false, true])
         pnCombos.push({
           id: `PN-${drop}-${exit}-${onlyPanic ? 'mkt' : 'any'}`,
@@ -497,6 +591,71 @@ export function runLab(A, { onProgress = () => {} } = {}) {
           filter: onlyPanic ? (code, g) => mktPanic(g) === true : null,
         });
   runFamily('panic', '錯殺逆勢', pnCombos, (s, p) => panicSignals(s, p.drop));
+
+  // 籌碼：外資／投信連續買超（法人資料依日期）
+  const instOf = (g, code, k) => A.inst[A.dates[g]]?.[code]?.[k];
+  function streakSignals(s, k, days) {
+    const out = [];
+    let last = -Infinity;
+    for (let i = 61; i < s.c.length; i++) {
+      if (!s.liquid[i] || i - last < 5) continue;
+      let ok = true;
+      for (let j = 0; j < days; j++) {
+        const v = instOf(s.g[i - j], s.code, k);
+        if (!(v > 0)) ok = false;
+      }
+      const before = instOf(s.g[i - days], s.code, k);
+      if (ok && !(before > 0)) {
+        out.push(i);
+        last = i;
+      }
+    }
+    return out;
+  }
+  const CHIPS = [
+    ['foreign3', '外資連 3 日買超（第 3 天）', (s) => streakSignals(s, 1, 3)],
+    ['trust3', '投信連 3 日買超（第 3 天）', (s) => streakSignals(s, 0, 3)],
+  ];
+
+  const indCombos = [];
+  for (const [key, name] of [...INDICATORS, ...CHIPS])
+    for (const exit of ['H1', 'H3', 'H5', 'H10'])
+      indCombos.push({ id: `IND-${key}-${exit}`, label: `${name}、${EXITS[exit].name}`, exit, sig: { key } });
+  const indTest = Object.fromEntries(INDICATORS.map(([k, , f]) => [k, f]));
+  const chipFn = Object.fromEntries(CHIPS.map(([k, , f]) => [k, f]));
+  runFamily('popular', '坊間技術指標與籌碼', indCombos, (s, p) =>
+    chipFn[p.key] ? chipFn[p.key](s) : indicatorSignals(s, indTest[p.key]),
+  );
+
+  // 三重共振（App 名單條件）：營收、毛利率、投信同時成立且技術面趨勢向上的第一天
+  function resonanceSignals(s) {
+    const out = [];
+    let last = -Infinity;
+    let prevOn = false;
+    for (let i = 61; i < s.c.length; i++) {
+      const g = s.g[i];
+      const trendUp = s.c[i] > s.ma20[i] && s.ma20[i] > s.ma20[i - 1] && s.ma5[i] > s.ma5[i - 1];
+      const on =
+        s.liquid[i] &&
+        trendUp &&
+        F.revPass(s.code, g) === true &&
+        F.gmPass(s.code, g) === true &&
+        F.trustPass(s.code, g) === true;
+      if (on && !prevOn && i - last >= COOLDOWN) {
+        out.push(i);
+        last = i;
+      }
+      prevOn = on;
+    }
+    return out;
+  }
+  const rsCombos = ['H3', 'H5', 'H10', 'H20', 'MA20'].map((exit) => ({
+    id: `RS-${exit}`,
+    label: `三重共振（營收＋毛利率＋投信＋趨勢向上）、${EXITS[exit].name}`,
+    exit,
+    sig: {},
+  }));
+  runFamily('resonance', '三重共振（App 名單，不含千張大戶）', rsCombos, (s) => resonanceSignals(s));
 
   // ---- 依樣本內挑最好的，再看樣本外 ----
   // 判定：few 樣本不足｜robust 樣本內外都賺且勝過隨機、統計上可信｜weak 都賺但證據不夠強
@@ -549,6 +708,63 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     instDays: Object.keys(A.inst).length,
   };
 
+  // ---- 短線（持有 10 天以內）比較：每個想法用樣本內挑出最好的持有天數，再看樣本外與資金曲線 ----
+  onProgress('短線比較');
+  const SHORT = ['H1', 'H3', 'H5', 'H10'];
+  const ideas = [
+    ['ours', '突破 120 日前高＋量 1.5 倍＋站穩 2 天', 'breakout', (r) => r.sig.lb === 120 && r.sig.vm === 1.5 && r.sig.hd === 2],
+    ['ours', '突破 20 日前高＋量 1.5 倍＋站穩 2 天（App 預設）', 'breakout', (r) => r.sig.lb === 20 && r.sig.vm === 1.5 && r.sig.hd === 2],
+    ['ours', '共振技術面：趨勢向上＋回測月線不破', 'pullback', (r) => r.sig.key === 20 && r.sig.tol === 2],
+    ['ours', '三重共振（App 名單）', 'resonance', () => true],
+    ['ours', '錯殺逆勢：跌深 15%（任何時候）', 'panic', (r) => r.sig.drop === 15 && r.id.endsWith('-any')],
+    ['ours', '錯殺逆勢：跌深 15%，只在大盤恐慌時', 'panic', (r) => r.sig.drop === 15 && r.id.endsWith('-mkt')],
+    ...[...INDICATORS, ...CHIPS].map(([k, name]) => ['popular', name, 'popular', (r) => r.sig.key === k]),
+  ];
+  const shortTerm = [];
+  for (const [group, name, fam, match] of ideas) {
+    const f = families.find((x) => x.id === fam);
+    const cands = f.rows.filter((r) => match(r) && SHORT.includes(r.exit));
+    const ok = cands.filter((r) => r.is.n >= 30);
+    const pick = (ok.length ? ok : cands).sort((a, b) => (b.is.avg ?? -99) - (a.is.avg ?? -99))[0];
+    if (!pick) continue;
+    const pf = portfolio(pick._trades, A);
+    shortTerm.push({
+      group,
+      name,
+      id: pick.id,
+      exit: pick.exit,
+      is: pick.is,
+      oos: pick.oos,
+      all: pick.all,
+      up: pick.up,
+      down: pick.down,
+      verdict: pick.verdict,
+      byExit: Object.fromEntries(cands.map((r) => [r.exit, { is: r.is.avg, oos: r.oos.avg, n: r.all.n }])),
+      portfolio: { total: pf.total, cagr: pf.cagr, mdd: pf.mdd, exposure: pf.exposure, taken: pf.taken, curve: pf.curve },
+    });
+  }
+  shortTerm.sort((a, b) => (b.portfolio.cagr ?? -999) - (a.portfolio.cagr ?? -999));
+
+  // 對照：每天隨機挑股票、同樣最多 10 檔，看「亂買」的資金曲線長怎樣
+  const hashPick = (code, d) => {
+    let x = 7;
+    for (const ch of code + d) x = (x * 131 + ch.charCodeAt(0)) >>> 0;
+    return x % 20 === 0;
+  };
+  const randomPortfolio = {};
+  for (const exitId of SHORT) {
+    const trades = tradesOf((s) => {
+      const out = [];
+      for (let i = 60; i < s.c.length; i++) if (s.liquid[i] && hashPick(s.code ?? '', s.d[i])) out.push(i);
+      return out;
+    }, exitId);
+    const pf = portfolio(trades, A);
+    randomPortfolio[exitId] = { total: pf.total, cagr: pf.cagr, mdd: pf.mdd, exposure: pf.exposure, taken: pf.taken };
+  }
+  const years = (lastG - firstG) / 245;
+  const ann = (x) => (x == null || years <= 0 ? null : r2(((1 + x / 100) ** (1 / years) - 1) * 100));
+  const buyHold = { taiex: ann(benchmark.all), equalWeight: ann(equalWeight.all) };
+
   // ---- 資金曲線：每個家族的第一名，最多同時 10 檔、每檔 10% ----
   onProgress('資金曲線');
   const equity = [];
@@ -576,6 +792,9 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     filterTables,
     coverage,
     equity,
+    shortTerm,
+    randomPortfolio,
+    buyHold,
     ms: Date.now() - t0,
   };
 }
@@ -583,7 +802,13 @@ export function runLab(A, { onProgress = () => {} } = {}) {
 /** 等權資金曲線：同時最多 10 檔，每檔投入當時淨值的 10% */
 function portfolio(trades, A, slots = 10) {
   const byEntry = new Map();
-  for (const t of [...trades].sort((a, b) => (a.ed < b.ed ? -1 : 1))) {
+  // 同一天訊號太多、超過可買檔數時，用固定的亂序挑選（避免永遠挑代號小的股票）
+  const h = (t) => {
+    let x = 0;
+    for (const ch of t.code + t.ed) x = (x * 31 + ch.charCodeAt(0)) | 0;
+    return x;
+  };
+  for (const t of [...trades].sort((a, b) => (a.ed < b.ed ? -1 : a.ed > b.ed ? 1 : h(a) - h(b)))) {
     const g = A.dateIdx[t.ed];
     if (!byEntry.has(g)) byEntry.set(g, []);
     byEntry.get(g).push(t);
@@ -609,6 +834,7 @@ function portfolio(trades, A, slots = 10) {
       taken++;
     }
     // 收盤評價與出場
+    if (open.length) exposureDays++;
     const keep = [];
     for (const p of open) {
       const s = p.t.s;
@@ -617,11 +843,10 @@ function portfolio(trades, A, slots = 10) {
         p.value *= s.c[i] / p.lastPx;
         p.lastPx = s.c[i];
       }
-      if (d >= p.t.xd) cash += p.value * (1 - ROUND_TRIP / 100);
+      if (d >= p.t.xd) cash += p.value * (1 - (p.t.cost ?? ROUND_TRIP) / 100);
       else keep.push(p);
     }
     open = keep;
-    if (open.length) exposureDays++;
     const eq = cash + open.reduce((a, p) => a + p.value, 0);
     peak = Math.max(peak, eq);
     mdd = Math.min(mdd, eq / peak - 1);
