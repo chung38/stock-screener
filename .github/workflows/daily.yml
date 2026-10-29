@@ -37,7 +37,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      # 一律取最新的 main（排隊中的 run 才不會拿到舊資料）
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
@@ -65,8 +68,10 @@ jobs:
             echo "資料沒有變動"
           else
             git commit -q -m "資料更新 $(TZ=Asia/Taipei date +%Y-%m-%d)"
-            git pull -q --rebase origin main
-            git push -q
+            for i in 1 2 3; do
+              git pull -q --rebase -X theirs origin main && git push -q && break
+              sleep 10
+            done
           fi
 
       - name: 建置手機網頁
