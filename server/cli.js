@@ -38,12 +38,12 @@ if (cmd === 'diagnose') {
     clearInterval(timer);
   }
 } else if (cmd === 'dividends') {
-  // 近 26 個月的除權息資料 → data/dividends.json
+  // 近 28 個月的除權息資料 → data/dividends.json
   const t = todayStr();
   const cur = ymKey(Number(t.slice(0, 4)), Number(t.slice(4, 6)));
   const byCode = {};
   const debug = { errors: [], samples: {}, months: {} };
-  for (let i = 25; i >= 0; i--) {
+  for (let i = 27; i >= 0; i--) {
     const { y, m } = parseYm(shiftMonth(cur, -i));
     const r = await fetchDividendMonth(y, m);
     for (const [code, ymd, prev, ref] of r.rows) (byCode[code] ??= []).push([ymd, prev, ref]);
@@ -56,6 +56,16 @@ if (cmd === 'diagnose') {
   await writeJSON('dividends.json', byCode);
   await writeJSON('dividends-debug.json', debug);
   console.log(`除權息資料：${Object.keys(byCode).length} 檔`);
+} else if (cmd === 'research') {
+  const { loadAll } = await import('./research/load.js');
+  const { runLab } = await import('./research/lab.js');
+  const fs = await import('node:fs/promises');
+  const out = path.resolve(process.argv[3] || 'dist/research.json');
+  const A = await loadAll();
+  const r = runLab(A, { onProgress: (x) => console.log(`計算：${x}`) });
+  await fs.mkdir(path.dirname(out), { recursive: true });
+  await fs.writeFile(out, JSON.stringify(r));
+  console.log(`已輸出 ${out}：${r.days} 個交易日、${r.stocks} 檔，耗時 ${Math.round(r.ms / 1000)} 秒`);
 } else if (cmd === 'export') {
   const out = path.resolve(process.argv[3] || 'dist/data.json');
   const r = await exportBundle(out);
