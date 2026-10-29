@@ -7,8 +7,8 @@ import { runBacktest } from '../screener/breakout.js';
 import { readJSON, listKeys } from '../lib/store.js';
 import { DATA_DIR } from '../config.js';
 
-// 股價保留約 2 年多，供突破策略回測
-const KEEP = { prices: 560, inst: 30, holders: 16, revenue: 14, margins: 10 };
+// 股價、法人、營收保留約 2 年多，供策略回測
+const KEEP = { prices: 560, inst: 560, holders: 16, revenue: 30, margins: 12 };
 
 export async function pruneOld() {
   let removed = 0;

@@ -1,6 +1,6 @@
 // 命令列：npm run update / backfill / diagnose / export
 import path from 'node:path';
-import { runUpdate, jobState } from './jobs/update.js';
+import { runUpdate, runResearchBackfill, jobState } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
 import { exportBundle, exportBacktest, pruneOld } from './jobs/export.js';
 
@@ -24,6 +24,16 @@ if (cmd === 'diagnose') {
   }
   const removed = await pruneOld();
   if (removed) console.log(`清掉 ${removed} 個過期資料檔`);
+} else if (cmd === 'research-data') {
+  const timer = setInterval(() => {
+    const s = jobState();
+    if (s.stage) console.log(`${s.stage} ${s.done}/${s.total}`);
+  }, 30000);
+  try {
+    await runResearchBackfill();
+  } finally {
+    clearInterval(timer);
+  }
 } else if (cmd === 'export') {
   const out = path.resolve(process.argv[3] || 'dist/data.json');
   const r = await exportBundle(out);

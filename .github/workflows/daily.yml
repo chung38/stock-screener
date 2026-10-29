@@ -15,6 +15,10 @@ on:
         description: '補齊近 2 年股價，供突破策略回測（約 60–90 分鐘，只需要做一次）'
         type: boolean
         default: false
+      research:
+        description: '補齊 2 年月營收、毛利率、法人資料，供策略研究（約 60–80 分鐘，只需要做一次）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -47,7 +51,9 @@ jobs:
         env:
           CRON_ENABLED: '0'
           PRICE_DAYS: ${{ inputs.history && '500' || '90' }}
-        run: node server/cli.js ${{ (inputs.backfill || inputs.history) && 'backfill' || 'update' }}
+        run: |
+          if [ "${{ inputs.research }}" = "true" ]; then node server/cli.js research-data; fi
+          node server/cli.js ${{ (inputs.backfill || inputs.history) && 'backfill' || 'update' }}
 
       - name: 把資料存回 repo
         if: always()

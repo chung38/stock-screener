@@ -392,6 +392,50 @@ export async function runUpdate({ backfill = false } = {}) {
   }
 }
 
+/**
+ * 研究用：補齊約 2 年的月營收、營益分析、法人買賣超，供策略回測
+ * 只需要跑一次；之後每日更新會自動接續
+ */
+export async function runResearchBackfill() {
+  if (state.running) throw new Error('已經有更新在跑了');
+  Object.assign(state, { running: true, kind: 'research', stage: '準備中', done: 0, total: 0, errors: [] });
+  try {
+    await log('info', '開始補齊研究用歷史資料（月營收、營益分析、法人約 2 年）');
+    const empty = { sii: new Set(), otc: new Set() };
+    const revLatest = (await listKeys('revenue')).at(-1) ?? expectedLatestRevenueMonth();
+    await backfillFromMops({
+      kind: 'rev',
+      label: '月營收（2 年）',
+      periods: Array.from({ length: 26 }, (_, i) => shiftMonth(revLatest, -i)),
+      latest: revLatest,
+      foundBy: empty,
+      fetchOne: (market, ym) => {
+        const { y, m } = parseYm(ym);
+        return mops.fetchRevenueMonth(market, y, m);
+      },
+      merge: mergeRevenue,
+    });
+    const gmLatest = (await listKeys('margins')).at(-1) ?? expectedLatestQuarter();
+    await backfillFromMops({
+      kind: 'gm',
+      label: '營益分析（2 年）',
+      periods: Array.from({ length: 10 }, (_, i) => shiftQuarter(gmLatest, -i)),
+      latest: gmLatest,
+      foundBy: empty,
+      fetchOne: (market, k) => {
+        const { y, q } = parseQ(k);
+        return mops.fetchMarginQuarter(market, y, q);
+      },
+      merge: mergeMargins,
+    });
+    await updateInst(recentWeekdays(todayStr(), 560).reverse());
+    await log('info', `研究用資料補齊完成${state.errors.length ? `（${state.errors.length} 個警告）` : ''}`);
+  } finally {
+    state.running = false;
+    state.stage = '';
+  }
+}
+
 export async function runHoldersOnly() {
   if (state.running) return;
   state.running = true;
