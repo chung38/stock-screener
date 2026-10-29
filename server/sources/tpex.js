@@ -40,7 +40,8 @@ async function tryAll(urls, date, parse) {
 export async function fetchDaily(date) {
   return tryAll(
     [
-      `${BASE}/www/zh-tw/afterTrading/dailyQ?date=${encodeURIComponent(toSlash(date))}&type=EW&response=json`,
+      // 新版網址（2024 改版後）；舊版網址會忽略日期、只回最新一天，所以放最後
+      `${BASE}/www/zh-tw/afterTrading/otc?date=${encodeURIComponent(toSlash(date))}&type=EW&response=json`,
       `${BASE}/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json&se=EW&d=${encodeURIComponent(toRocSlash(date))}`,
     ],
     date,
