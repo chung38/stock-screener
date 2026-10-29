@@ -1,10 +1,12 @@
 name: 每日更新
 
-# 台北時間：週一到週五 18:40 抓當天資料；週六 10:30 抓集保千張大戶
+# 台北時間：週一到週五 18:40 抓當天資料；週六 10:30 抓集保千張大戶；
+# 週一到週五 07:20 只抓國際行情與原物料（美股收盤後、台股開盤前）
 on:
   schedule:
     - cron: '40 10 * * 1-5'
     - cron: '30 2 * * 6'
+    - cron: '20 23 * * 0-4'
   workflow_dispatch:
     inputs:
       backfill:
@@ -17,6 +19,10 @@ on:
         default: false
       research:
         description: '補齊 2 年月營收、毛利率、法人資料，供策略研究（約 60–80 分鐘，只需要做一次）'
+        type: boolean
+        default: false
+      global_only:
+        description: '只更新國際行情與原物料（約 1 分鐘）'
         type: boolean
         default: false
 
@@ -55,6 +61,10 @@ jobs:
           CRON_ENABLED: '0'
           PRICE_DAYS: ${{ inputs.history && '500' || '90' }}
         run: |
+          if [ "${{ github.event.schedule }}" = "20 23 * * 0-4" ] || [ "${{ inputs.global_only }}" = "true" ]; then
+            node server/cli.js global
+            exit 0
+          fi
           if [ "${{ inputs.research }}" = "true" ]; then node server/cli.js research-data; fi
           node server/cli.js ${{ (inputs.backfill || inputs.history) && 'backfill' || 'update' }}
 

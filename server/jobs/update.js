@@ -4,6 +4,8 @@ import * as tpex from '../sources/tpex.js';
 import * as mops from '../sources/mops.js';
 import * as tdcc from '../sources/tdcc.js';
 import { fetchMonth as fetchDividendMonth } from '../sources/dividends.js';
+import * as yahoo from '../sources/yahoo.js';
+import { INSTRUMENTS } from '../screener/global.js';
 import { readJSON, writeJSON, listKeys, exists } from '../lib/store.js';
 import {
   todayStr,
@@ -426,6 +428,35 @@ async function updateDividends() {
   state.done = 1;
 }
 
+// ---------- 國際行情與原物料（Yahoo） ----------
+
+const GLOBAL_KEEP = 560; // 約 2 年多，供研究用
+
+async function updateGlobal() {
+  const all = (await readJSON('global.json', null)) ?? { series: {} };
+  stage('國際行情與原物料', INSTRUMENTS.length);
+  let fails = 0;
+  for (const ins of INSTRUMENTS) {
+    const cur = all.series[ins.id];
+    // 第一次（或資料太少）抓 2 年，之後只抓近 1 個月合併
+    const range = !cur || cur.d.length < 300 ? '2y' : '1mo';
+    try {
+      const r = await yahoo.fetchDaily(ins.sym, range);
+      const m = new Map((cur?.d ?? []).map((d, i) => [d, cur.c[i]]));
+      r.d.forEach((d, i) => m.set(d, r.c[i]));
+      const d = [...m.keys()].sort().slice(-GLOBAL_KEEP);
+      all.series[ins.id] = { d, c: d.map((k) => m.get(k)) };
+    } catch (e) {
+      fails++;
+      if (fails <= 3) await log('warn', `國際行情 ${ins.name}（${ins.sym}）：${e.message}`);
+    }
+    state.done++;
+  }
+  all.updatedAt = new Date().toISOString();
+  await writeJSON('global.json', all);
+  if (fails > 3) await log('warn', `國際行情共 ${fails} 項抓不到`);
+}
+
 // 每日更新要往回看幾個平日：至少 8 天；中間停了很久（例如電腦幾週沒開）就補到上次的資料為止
 async function dailyWindow(today) {
   const last = (await listKeys('prices')).at(-1);
@@ -460,6 +491,7 @@ export async function runUpdate({ backfill = false } = {}) {
     await updatePrices(priceDates);
     await updateInst(recentWeekdays(today, deep ? INST_DAYS + 4 : win).reverse());
     await updateDividends();
+    await updateGlobal();
     await updateRevenue();
     await updateMargins();
     await updateHolders();
@@ -519,6 +551,22 @@ export async function runResearchBackfill() {
     });
     await updateInst(recentWeekdays(todayStr(), 560).reverse());
     await log('info', `研究用資料補齊完成${state.errors.length ? `（${state.errors.length} 個警告）` : ''}`);
+  } finally {
+    state.running = false;
+    state.stage = '';
+  }
+}
+
+/** 只更新國際行情（早上美股收盤後跑，台股開盤前就能看到） */
+export async function runGlobalOnly() {
+  if (state.running) throw new Error('已經有更新在跑了');
+  Object.assign(state, { running: true, kind: 'global', stage: '準備中', done: 0, total: 0, errors: [] });
+  try {
+    await updateGlobal();
+    const m = await getMeta();
+    m.updated = { ...m.updated, globalRun: new Date().toISOString() };
+    await saveMeta(m);
+    await log('info', `國際行情更新完成${state.errors.length ? `（${state.errors.length} 個警告）` : ''}`);
   } finally {
     state.running = false;
     state.stage = '';

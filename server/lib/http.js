@@ -12,6 +12,8 @@ const GAPS = {
   'mopsov.twse.com.tw': 4000,
   'opendata.tdcc.com.tw': 1000,
   'www.tdcc.com.tw': 2500,
+  'query1.finance.yahoo.com': 700,
+  'query2.finance.yahoo.com': 700,
 };
 
 const hosts = new Map();

@@ -10,13 +10,14 @@ import {
   CRON_ENABLED,
   CRON_DAILY,
   CRON_WEEKLY,
+  CRON_GLOBAL,
   DATA_DIR,
   TZ,
   AUTO_UPDATE_ON_START,
   OPEN_BROWSER,
 } from './config.js';
 import { runScreen, stockDetail, DEFAULTS } from './screener/screen.js';
-import { runUpdate, runHoldersOnly, getStatus } from './jobs/update.js';
+import { runUpdate, runHoldersOnly, runGlobalOnly, getStatus } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
 import { loadData } from './screener/data.js';
 import { currentBreakouts, runBacktest } from './screener/breakout.js';
@@ -119,12 +120,15 @@ if (CRON_ENABLED) {
   cron.schedule(CRON_WEEKLY, () => runHoldersOnly().catch((e) => console.error('集保更新失敗', e.message)), {
     timezone: TZ,
   });
+  cron.schedule(CRON_GLOBAL, () => runGlobalOnly().catch((e) => console.error('國際行情更新失敗', e.message)), {
+    timezone: TZ,
+  });
 }
 
 app.listen(PORT, () => {
   console.log(`選股伺服器啟動：http://localhost:${PORT}`);
   console.log(`資料夾：${DATA_DIR}`);
-  if (CRON_ENABLED) console.log(`自動更新：每日 ${CRON_DAILY}、集保 ${CRON_WEEKLY}（台北時間）`);
+  if (CRON_ENABLED) console.log(`自動更新：每日 ${CRON_DAILY}、國際行情 ${CRON_GLOBAL}、集保 ${CRON_WEEKLY}（台北時間）`);
 
   if (OPEN_BROWSER) {
     const url = `http://localhost:${PORT}`;

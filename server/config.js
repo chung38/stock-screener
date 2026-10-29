@@ -29,6 +29,8 @@ export const APP_PASSWORD = process.env.APP_PASSWORD || '';
 export const CRON_ENABLED = process.env.CRON_ENABLED !== '0';
 export const CRON_DAILY = process.env.CRON_DAILY || '40 17 * * 1-5';
 export const CRON_WEEKLY = process.env.CRON_WEEKLY || '30 10 * * 6';
+// 早上抓美股、原物料收盤（台股開盤前）
+export const CRON_GLOBAL = process.env.CRON_GLOBAL || '20 7 * * 1-5';
 
 // 啟動時自動更新資料（第一次會自動建立歷史資料）。設 0 關閉
 export const AUTO_UPDATE_ON_START = process.env.AUTO_UPDATE_ON_START !== '0';

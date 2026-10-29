@@ -2,6 +2,7 @@
 // 這個檔案不依賴 Node，伺服器與瀏覽器（GitHub Pages 版）共用
 import { technical, marketMood, smaSeries } from './indicators.js';
 import { shiftMonth, parseQ, shiftQuarter } from '../lib/dates.js';
+import { globalSummary, industryLinks } from './global.js';
 
 export const DEFAULTS = {
   // 基本面
@@ -224,6 +225,7 @@ function evaluate(code, D, p, tech) {
 export function screenData(D, query = {}) {
   const p = coerceParams(query);
   const market = D.taiex.length ? marketMood(D.taiex) : { level: 'unknown', reason: '尚無加權指數資料' };
+  const global = globalSummary(D.global);
 
   const list = [];
   const panic = [];
@@ -269,6 +271,7 @@ export function screenData(D, query = {}) {
     params: p,
     asOf: D.priceKeys[D.priceKeys.length - 1] ?? null,
     market,
+    global,
     universe,
     list,
     panic: panic.slice(0, 60),
@@ -339,5 +342,7 @@ export function detailData(D, code, query = {}) {
     gm: { qs: histGm.qs.length >= judged.gm.qs.length ? histGm.qs : judged.gm.qs },
     big: bigHolderCheck(code, D, { ...p, bigWeeks: 1 }),
     trust: trustCheck(code, D, { ...p, trustDays: 10 }),
+    // 這檔股票所屬產業相關的國際行情／原物料
+    links: industryLinks(D.stocks[code]?.ind, globalSummary(D.global)),
   };
 }

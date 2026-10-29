@@ -1,6 +1,6 @@
 // 命令列：npm run update / backfill / diagnose / research …（不帶參數執行可看全部指令）
 import path from 'node:path';
-import { runUpdate, runResearchBackfill, jobState } from './jobs/update.js';
+import { runUpdate, runResearchBackfill, runGlobalOnly, jobState } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
 import { exportBundle, exportBacktest, pruneOld } from './jobs/export.js';
 import { fetchMonth as fetchDividendMonth } from './sources/dividends.js';
@@ -27,6 +27,8 @@ if (cmd === 'diagnose') {
   }
   const removed = await pruneOld();
   if (removed) console.log(`清掉 ${removed} 個過期資料檔`);
+} else if (cmd === 'global') {
+  await runGlobalOnly();
 } else if (cmd === 'research-data') {
   const timer = setInterval(() => {
     const s = jobState();
@@ -80,6 +82,7 @@ if (cmd === 'diagnose') {
       '用法：node server/cli.js <指令>',
       '  update               每日更新',
       '  backfill             建立／補齊歷史資料（PRICE_DAYS 天股價）',
+      '  global               只更新國際行情與原物料（Yahoo）',
       '  research-data        補齊 2 年月營收、營益分析、法人資料',
       '  dividends            重抓近 28 個月除權息資料',
       '  diagnose             測試每個資料來源',

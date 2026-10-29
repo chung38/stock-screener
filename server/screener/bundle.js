@@ -61,6 +61,7 @@ export function pack(D, { minVolLots = 50, minPrice = 3, meta = {} } = {}) {
     holders: Object.fromEntries(D.holderKeys.map((k) => [k, pick(D.holders[k], (r) => [r2(r.b), r2(r.r), r.bp])])),
     instKeys: D.instKeys,
     inst: Object.fromEntries(D.instKeys.map((k) => [k, pick(D.inst[k], (r) => [r[0], r[1]])])),
+    global: Object.fromEntries(Object.entries(D.global ?? {}).map(([id, x]) => [id, [x.d, x.c]])),
   };
 }
 
@@ -99,5 +100,6 @@ export function unpack(B) {
     holders: map(B.holders, ([b, r, bp]) => ({ b, r, bp })),
     instKeys: B.instKeys,
     inst: B.inst,
+    global: Object.fromEntries(Object.entries(B.global ?? {}).map(([id, [d, c]]) => [id, { d, c }])),
   };
 }

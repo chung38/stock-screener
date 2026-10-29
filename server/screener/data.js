@@ -50,6 +50,10 @@ export async function loadData({ priceDays = 110 } = {}) {
     await Promise.all(holderKeys.map(async (k) => [k, (await readJSON(`holders/${k}.json`, {}))?.rows ?? {}])),
   );
 
+  // 國際行情與原物料：保留約 1 年多，用來算波動百分位
+  const g = (await readJSON('global.json', null))?.series ?? {};
+  const global = Object.fromEntries(Object.entries(g).map(([id, x]) => [id, { d: x.d.slice(-300), c: x.c.slice(-300) }]));
+
   const instKeys = (await listKeys('inst')).slice(-15);
   const inst = Object.fromEntries(await Promise.all(instKeys.map(async (k) => [k, await readJSON(`inst/${k}.json`, {})])));
 
@@ -66,5 +70,6 @@ export async function loadData({ priceDays = 110 } = {}) {
     holders,
     instKeys,
     inst,
+    global,
   };
 }
