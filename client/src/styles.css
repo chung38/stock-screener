@@ -1833,8 +1833,12 @@ button.link {
 }
 
 /* 短線比較表 */
+.bench dd.rp-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
 .rp-item {
-  margin-right: 12px;
   white-space: nowrap;
 }
 .short-table tbody th {
@@ -1859,4 +1863,10 @@ button.link {
 .grp-popular {
   background: var(--surface-2);
   color: var(--muted);
+}
+.short-table .range {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
 }

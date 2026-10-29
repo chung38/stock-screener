@@ -708,6 +708,34 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     instDays: Object.keys(A.inst).length,
   };
 
+  // 同一段期間「買進持有」的年化報酬（資金曲線從第一筆訊號開始算，大盤也要從同一天算才公平）
+  function sameWindow(g0) {
+    const years = (lastG - g0) / 245;
+    const ann = (x) => (x == null || years <= 0 ? null : r2(((1 + x / 100) ** (1 / years) - 1) * 100));
+    return { from: A.dates[g0], taiex: ann(ret(g0, lastG)), equalWeight: ann(ewRet(g0, lastG)) };
+  }
+  // 同一天訊號比可買檔數多時，挑哪幾檔會影響結果；換 20 種挑法，取中位數與 10%／90% 分位
+  const SEEDS = 20;
+  function multiPortfolio(trades) {
+    const runs = [];
+    for (let k = 0; k < SEEDS; k++) runs.push(portfolio(trades, A, 10, k));
+    const by = (f) => runs.map(f).filter((x) => x != null).sort((a, b) => a - b);
+    const q = (arr, p) => (arr.length ? arr[Math.round(p * (arr.length - 1))] : null);
+    const cagrs = by((r) => r.cagr);
+    const med = [...runs].sort((a, b) => (a.cagr ?? -999) - (b.cagr ?? -999))[Math.floor(SEEDS / 2)];
+    return {
+      cagr: q(cagrs, 0.5),
+      p10: q(cagrs, 0.1),
+      p90: q(cagrs, 0.9),
+      mdd: q(by((r) => r.mdd), 0.5),
+      total: med.total,
+      exposure: med.exposure,
+      taken: med.taken,
+      curve: med.curve,
+      market: sameWindow(med.start),
+    };
+  }
+
   // ---- 短線（持有 10 天以內）比較：每個想法用樣本內挑出最好的持有天數，再看樣本外與資金曲線 ----
   onProgress('短線比較');
   const SHORT = ['H1', 'H3', 'H5', 'H10'];
@@ -727,7 +755,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     const ok = cands.filter((r) => r.is.n >= 30);
     const pick = (ok.length ? ok : cands).sort((a, b) => (b.is.avg ?? -99) - (a.is.avg ?? -99))[0];
     if (!pick) continue;
-    const pf = portfolio(pick._trades, A);
+    const pf = multiPortfolio(pick._trades);
     shortTerm.push({
       group,
       name,
@@ -740,7 +768,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
       down: pick.down,
       verdict: pick.verdict,
       byExit: Object.fromEntries(cands.map((r) => [r.exit, { is: r.is.avg, oos: r.oos.avg, n: r.all.n }])),
-      portfolio: { total: pf.total, cagr: pf.cagr, mdd: pf.mdd, exposure: pf.exposure, taken: pf.taken, curve: pf.curve },
+      portfolio: pf,
     });
   }
   shortTerm.sort((a, b) => (b.portfolio.cagr ?? -999) - (a.portfolio.cagr ?? -999));
@@ -758,12 +786,10 @@ export function runLab(A, { onProgress = () => {} } = {}) {
       for (let i = 60; i < s.c.length; i++) if (s.liquid[i] && hashPick(s.code ?? '', s.d[i])) out.push(i);
       return out;
     }, exitId);
-    const pf = portfolio(trades, A);
-    randomPortfolio[exitId] = { total: pf.total, cagr: pf.cagr, mdd: pf.mdd, exposure: pf.exposure, taken: pf.taken };
+    const { curve, ...pf } = multiPortfolio(trades);
+    randomPortfolio[exitId] = pf;
   }
-  const years = (lastG - firstG) / 245;
-  const ann = (x) => (x == null || years <= 0 ? null : r2(((1 + x / 100) ** (1 / years) - 1) * 100));
-  const buyHold = { taiex: ann(benchmark.all), equalWeight: ann(equalWeight.all) };
+  const buyHold = sameWindow(firstG);
 
   // ---- 資金曲線：每個家族的第一名，最多同時 10 檔、每檔 10% ----
   onProgress('資金曲線');
@@ -800,13 +826,13 @@ export function runLab(A, { onProgress = () => {} } = {}) {
 }
 
 /** 等權資金曲線：同時最多 10 檔，每檔投入當時淨值的 10% */
-function portfolio(trades, A, slots = 10) {
+function portfolio(trades, A, slots = 10, seed = 0) {
   const byEntry = new Map();
-  // 同一天訊號太多、超過可買檔數時，用固定的亂序挑選（避免永遠挑代號小的股票）
+  // 同一天訊號太多、超過可買檔數時，用固定的亂序挑選（避免永遠挑代號小的股票）；seed 換一種挑法
   const h = (t) => {
-    let x = 0;
-    for (const ch of t.code + t.ed) x = (x * 31 + ch.charCodeAt(0)) | 0;
-    return x;
+    let x = seed * 2654435761;
+    for (const ch of t.code + t.ed) x = Math.imul(x ^ ch.charCodeAt(0), 16777619);
+    return x | 0;
   };
   for (const t of [...trades].sort((a, b) => (a.ed < b.ed ? -1 : a.ed > b.ed ? 1 : h(a) - h(b)))) {
     const g = A.dateIdx[t.ed];
@@ -861,5 +887,6 @@ function portfolio(trades, A, slots = 10) {
     taken,
     exposure: r2((exposureDays / Math.max(1, A.dates.length - start)) * 100),
     curve,
+    start,
   };
 }

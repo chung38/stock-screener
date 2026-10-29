@@ -119,8 +119,8 @@ function ShortTerm({ r }) {
     <section className="card">
       <h2>短線持有：我們的策略 vs 坊間常用指標</h2>
       <p className="muted small">
-        每個方法都試了當沖、持有 3／5／10 天，用前 2/3 期間挑出最好的持有天數，再看後 1/3 期間。「資金曲線」是全部訊號照做、最多同時 10 檔、每檔 1/10
-        資金的實際帳戶結果（已扣成本），依年化報酬排序。
+        每個方法都試了當沖、持有 3／5／10 天，用前 2/3 期間挑出最好的持有天數，再看後 1/3 期間。「資金曲線」是訊號照做、最多同時 10 檔、每檔 1/10
+        資金的帳戶結果（已扣成本）。同一天訊號太多買不完時，挑哪幾檔會影響結果，所以換 20 種挑法，取中位數，括號內是 10%～90% 的範圍。依年化中位數排序。
       </p>
       <dl className="bench">
         <div>
@@ -131,8 +131,8 @@ function ShortTerm({ r }) {
           </dd>
         </div>
         <div>
-          <dt>每天隨機亂買（同樣最多 10 檔）</dt>
-          <dd>
+          <dt>每天隨機亂買（同樣最多 10 檔，年化中位數）</dt>
+          <dd className="rp-list">
             {['H1', 'H3', 'H5', 'H10'].map((k) => (
               <span key={k} className="rp-item">
                 {HOLD[k]} <b className={`num ${tone(rp[k]?.cagr)}`}>{pct(rp[k]?.cagr, 1)}</b>
@@ -150,7 +150,7 @@ function ShortTerm({ r }) {
               <th colSpan={2}>每筆平均（扣成本）</th>
               <th rowSpan={2}>樣本外勝過隨機</th>
               <th colSpan={2}>大盤季線</th>
-              <th colSpan={3}>資金曲線</th>
+              <th colSpan={4}>資金曲線</th>
               <th rowSpan={2}>判定</th>
             </tr>
             <tr>
@@ -159,6 +159,7 @@ function ShortTerm({ r }) {
               <th>之上</th>
               <th>之下</th>
               <th>年化</th>
+              <th>同期大盤</th>
               <th>最大回撤</th>
               <th>勝過亂買</th>
             </tr>
@@ -178,7 +179,17 @@ function ShortTerm({ r }) {
                 <td className={`num ${tone(x.down?.avg)}`} title={`${x.down?.n ?? 0} 筆`}>
                   {pct(x.down?.avg)}
                 </td>
-                <td className={`num ${tone(x.portfolio.cagr)}`}>{pct(x.portfolio.cagr, 1)}</td>
+                <td className={`num ${tone(x.portfolio.cagr)}`}>
+                  {pct(x.portfolio.cagr, 1)}
+                  {x.portfolio.p10 != null && (
+                    <span className="range">
+                      （{fmtNum(x.portfolio.p10, 0)}～{fmtNum(x.portfolio.p90, 0)}）
+                    </span>
+                  )}
+                </td>
+                <td className="num" title={`從 ${fmtDate(x.portfolio.market?.from)} 起算：加權指數／等權平均`}>
+                  {pct(x.portfolio.market?.taiex, 0)}／{pct(x.portfolio.market?.equalWeight, 0)}
+                </td>
                 <td className="num down">{pct(x.portfolio.mdd, 1)}</td>
                 <td>{beatRandom(x) ? '是' : '否'}</td>
                 <td>
@@ -190,7 +201,8 @@ function ShortTerm({ r }) {
         </table>
       </div>
       <p className="muted small">
-        「每筆平均」把當沖的證交稅減半（0.15%）算進去；其他持有天數每筆扣 {fmtNum(r.costPct, 3)}%。持有天數越短，成本占報酬的比例越高。
+        「同期大盤」是從該方法第一筆交易那天開始買進持有，加權指數／等權平均的年化報酬。「每筆平均」把當沖的證交稅減半（0.15%）算進去；其他持有天數每筆扣{' '}
+        {fmtNum(r.costPct, 3)}%。持有天數越短、換手越頻繁，成本吃掉的越多。
       </p>
     </section>
   );
