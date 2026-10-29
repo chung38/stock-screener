@@ -1870,3 +1870,152 @@ button.link {
   color: var(--muted);
   font-weight: 400;
 }
+
+/* ---------- 國際與原物料 ---------- */
+.global-view {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.global-view > * {
+  min-width: 0;
+}
+.global-view .panic-banner .small,
+.panic-view .panic-banner .small {
+  font-size: 13px;
+  margin-top: 6px;
+}
+.g-ev {
+  font-size: 13.5px;
+  margin-top: 8px;
+}
+.mood-btn {
+  border: 0;
+  cursor: pointer;
+}
+.warn-dot.caution {
+  background: var(--warn);
+}
+.warn-dot.panic {
+  background: var(--panic);
+}
+.g-alerts {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.g-alerts li {
+  border-left: 3px solid var(--warn);
+  padding: 2px 0 2px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+.g-alerts li.extreme {
+  border-left-color: var(--panic);
+}
+.g-table th small,
+.g-table td small,
+.g-links th small,
+.g-links td small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.g-table tbody th {
+  min-width: 130px;
+}
+.gtr,
+.gvol,
+.gdir {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  margin: 1px 4px 1px 0;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.gtr.up,
+.gdir.up {
+  color: var(--up);
+  background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+.gtr.down,
+.gdir.down {
+  color: var(--down);
+  background: color-mix(in srgb, var(--down) 12%, transparent);
+}
+.gvol small,
+.g-table td .gvol small,
+.g-links td .gvol small {
+  display: inline;
+  font-size: 10.5px;
+  margin-left: 4px;
+  opacity: 0.8;
+}
+.gvol.low {
+  color: var(--tech);
+  background: var(--tech-soft);
+}
+.gvol.high {
+  color: var(--warn);
+  background: var(--caution-soft);
+}
+.gvol.extreme {
+  color: #fff;
+  background: var(--panic);
+}
+.g-top span {
+  display: block;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.c-strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.c-mid {
+  color: var(--ink);
+}
+.c-weak {
+  color: var(--muted);
+}
+.g-tag {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--warn);
+  background: var(--caution-soft);
+}
+.g-tag.extreme {
+  color: #fff;
+  background: var(--panic);
+}
+.blk.global {
+  border-left-color: var(--line-strong);
+}
+.g-links td {
+  vertical-align: top;
+}
+
+.g-table td:not(.num) {
+  text-align: left;
+}
+.g-table tbody th[scope='rowgroup'] {
+  vertical-align: top;
+  font-weight: 600;
+}
+.g-table tr.g-first > * {
+  border-top: 1px solid var(--line-strong);
+}
+.global-view .panic-banner dl {
+  flex-wrap: wrap;
+  gap: 10px 22px;
+}

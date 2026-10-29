@@ -37,6 +37,13 @@ export function parseChart(res) {
     const d = new Date((ts[i] + off) * 1000).toISOString().slice(0, 10).replace(/-/g, '');
     byDate.set(d, Math.round(c * 10000) / 10000); // 同一天有兩筆時取後面那筆
   }
+  // 最後一天的日線有時還沒有收盤價（亞洲指數常見），用即時報價補上；之後更新會被正式收盤覆蓋
+  const p = res.meta?.regularMarketPrice;
+  const t = res.meta?.regularMarketTime;
+  if (Number.isFinite(p) && p > 0 && Number.isFinite(t)) {
+    const d = new Date((t + off) * 1000).toISOString().slice(0, 10).replace(/-/g, '');
+    if (!byDate.has(d) && d > ([...byDate.keys()].sort().at(-1) ?? '')) byDate.set(d, Math.round(p * 10000) / 10000);
+  }
   const d = [...byDate.keys()].sort();
   return {
     name: res.meta?.shortName ?? res.meta?.longName ?? res.meta?.symbol ?? '',

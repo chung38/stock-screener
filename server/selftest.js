@@ -94,6 +94,36 @@ test('異常跳動（減資）偵測', () => {
   assert.equal(lastJump([10, 11, 12.1, 13.3]), -1); // 連續漲停不算
 });
 
+const { parseChart } = await import('./sources/yahoo.js');
+const { seriesStats, globalMood, industryLinks, globalSummary } = await import('./screener/global.js');
+test('Yahoo 日線：依交易所時區換算日期、略過沒有收盤價的日子', () => {
+  // 日經：台灣時間 08:00 開盤＝UTC 前一天 23:00，不換算會變成前一天
+  const r = parseChart({
+    meta: { gmtoffset: 32400, shortName: 'Nikkei 225', currency: 'JPY' },
+    timestamp: [Date.UTC(2026, 9, 27, 0, 0) / 1000, Date.UTC(2026, 9, 28, 0, 0) / 1000, Date.UTC(2026, 9, 29, 0, 0) / 1000],
+    indicators: { quote: [{ close: [50000, null, 50500] }] },
+  });
+  assert.deepEqual(r.d, ['20261027', '20261029']);
+  assert.deepEqual(r.c, [50000, 50500]);
+});
+test('國際指標波動與燈號', () => {
+  const d = Array.from({ length: 300 }, (_, i) => String(20250101 + i));
+  const calmC = d.map((_, i) => 100 * (1 + 0.001 * Math.sin(i)));
+  const st = seriesStats({ d, c: calmC });
+  assert.ok(st.vol20 > 0 && st.volPct != null);
+  // 最後一天大跌 6%：單日波動應該被判為劇烈
+  const shock = [...calmC.slice(0, -1), calmC.at(-2) * 0.94];
+  assert.equal(seriesStats({ d, c: shock }).volLevel, 'extreme');
+  const base = { chg1: 0, chg5: 0, dd20: 0, last: 15, date: '20261029' };
+  assert.equal(globalMood({ SOX: base, SPX: base, VIX: base }).level, 'calm');
+  assert.equal(globalMood({ SOX: { ...base, chg1: -5.5 }, SPX: base, VIX: base }).level, 'panic');
+  assert.equal(globalMood({ SOX: base, SPX: base, VIX: { ...base, last: 24 } }).level, 'caution');
+  assert.equal(globalMood({ SOX: base, SPX: base }).level, 'unknown');
+  const sum = globalSummary({ WTI: { d, c: shock } });
+  assert.equal(industryLinks('塑膠工業', sum)[0].id, 'WTI');
+  assert.equal(industryLinks('不存在的產業', sum).length, 0);
+});
+
 test('OpenAPI 營益分析（實際欄位）', () => {
   const r = parseMarginOpenApi([
     {

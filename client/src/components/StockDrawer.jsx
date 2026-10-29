@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getStock } from '../api.js';
+import { getStock, getResearch } from '../api.js';
+import { fmtChg, VolChip, TrendChip, corrLabel } from './GlobalView.jsx';
 import PriceChart from './PriceChart.jsx';
 import ResonanceRings from './ResonanceRings.jsx';
 import { fmtNum, fmtPct, fmtLots, tone, deductLabel, quarterLabel, monthLabel, fmtShortDate } from '../format.js';
@@ -44,6 +45,52 @@ function DeductRow({ name, d }) {
         <span className={`ded ${x.cls}`}>{x.text}</span>
       </td>
     </tr>
+  );
+}
+
+function GlobalLinks({ ind, links }) {
+  const [corr, setCorr] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getResearch()
+      .then((r) => alive && setCorr(r?.global?.links?.[ind]?.corr ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [ind]);
+  return (
+    <section className="blk global">
+      <h3>相關國際行情與原物料</h3>
+      <table className="mini-table g-links">
+        <tbody>
+          {links.map((x) => {
+            const cl = corrLabel(corr?.[x.id]);
+            return (
+              <tr key={x.id}>
+                <th scope="row">
+                  {x.name}
+                  <small>
+                    {x.why}｜{x.dir === 1 ? '上漲通常有利' : x.dir === -1 ? '上漲＝成本增加' : '影響不一定'}
+                  </small>
+                </th>
+                <td className={`num ${tone(x.chg5)}`}>
+                  5 日 {fmtChg(x.chg5, x.kind)}
+                  <small className={tone(x.chg20)}>20 日 {fmtChg(x.chg20, x.kind)}</small>
+                </td>
+                <td>
+                  <TrendChip t={x.trend} />
+                  <VolChip x={x} />
+                </td>
+                <td className={cl.cls} title="過去 2 年產業平均股價和這個指標每週漲跌的相關係數">
+                  {corr ? `連動${cl.text}` : ''}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -199,6 +246,8 @@ export default function StockDrawer({ code, params, onClose }) {
               </p>
             </section>
           )}
+
+          {d.links?.length > 0 && <GlobalLinks ind={d.info?.ind} links={d.links} />}
         </div>
       )}
     </aside>

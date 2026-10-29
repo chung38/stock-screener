@@ -8,6 +8,7 @@ import StockDrawer from './components/StockDrawer.jsx';
 import StatusView from './components/StatusView.jsx';
 import BreakoutView from './components/BreakoutView.jsx';
 import ResearchView from './components/ResearchView.jsx';
+import GlobalView from './components/GlobalView.jsx';
 import ResonanceRings from './components/ResonanceRings.jsx';
 
 const LS_KEY = 'screener.params.v1';
@@ -128,7 +129,7 @@ export default function App() {
             <p>基本面爆發 × 籌碼進駐 × 技術面突破</p>
           </div>
         </div>
-        <MarketBar market={data?.market} asOf={data?.asOf} />
+        <MarketBar market={data?.market} global={data?.global} asOf={data?.asOf} onGlobal={() => setTab('global')} />
         <div className="top-actions">
           {STATIC ? (
             <span className="mk-date">每個交易日 18:40 自動更新</span>
@@ -153,6 +154,12 @@ export default function App() {
         </button>
         <button type="button" className={tab === 'breakout' ? 'on' : ''} onClick={() => setTab('breakout')}>
           突破策略
+        </button>
+        <button type="button" className={tab === 'global' ? 'on' : ''} onClick={() => setTab('global')}>
+          國際與原物料
+          {data?.global?.mood?.level === 'panic' || data?.global?.mood?.level === 'caution' ? (
+            <span className={`warn-dot ${data.global.mood.level}`} aria-label="國際行情有警示" />
+          ) : null}
         </button>
         <button type="button" className={tab === 'research' ? 'on' : ''} onClick={() => setTab('research')}>
           策略績效
@@ -272,6 +279,8 @@ export default function App() {
               resonance={new Set((data?.list ?? []).map((x) => x.code))}
             />
           )}
+
+          {tab === 'global' && <GlobalView global={data?.global} />}
 
           {tab === 'research' && <ResearchView />}
 

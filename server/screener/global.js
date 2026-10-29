@@ -149,11 +149,25 @@ export function seriesStats(s, kind, end = s.c.length - 1) {
   };
 }
 
+// 燈號門檻（用 2 年資料看過：越嚴重的燈號，台股當天越容易跌、之後 5 天反彈越大）
+export const MOOD_RULES = {
+  vixPanic: 30,
+  vixCaution: 22,
+  sox1Panic: -5,
+  sox1Caution: -3,
+  sox5Panic: -10,
+  sox5Caution: -6,
+  spxDdPanic: -8,
+  spx1Caution: -2,
+  twd5Caution: 1.2,
+  y10Caution: 25,
+};
+
 /**
  * 國際風險燈號：依費半、S&P 500、VIX、台幣、美債判斷 calm／caution／panic
  * @param {Record<string, object>} st 各指標的 seriesStats
  */
-export function globalMood(st) {
+export function globalMood(st, R = MOOD_RULES) {
   const sox = st.SOX;
   const spx = st.SPX;
   const vix = st.VIX;
@@ -163,19 +177,37 @@ export function globalMood(st) {
   const panic = [];
   const caution = [];
   const f = (x, d = 1) => (x > 0 ? '+' : '') + x.toFixed(d);
-  if (vix.last >= 30) panic.push(`VIX ${vix.last.toFixed(1)}（≥ 30）`);
-  else if (vix.last >= 22) caution.push(`VIX ${vix.last.toFixed(1)}（≥ 22）`);
+  if (vix.last >= R.vixPanic) panic.push(`VIX ${vix.last.toFixed(1)}`);
+  else if (vix.last >= R.vixCaution) caution.push(`VIX ${vix.last.toFixed(1)}`);
   if (vix.chg5 != null && vix.chg5 >= 40 && vix.last >= 18) caution.push(`VIX 5 日 ${f(vix.chg5, 0)}%`);
-  if (sox.chg1 <= -4) panic.push(`費半前一日 ${f(sox.chg1)}%`);
-  else if (sox.chg1 <= -2.5) caution.push(`費半前一日 ${f(sox.chg1)}%`);
-  if (sox.chg5 != null && sox.chg5 <= -8) panic.push(`費半 5 日 ${f(sox.chg5)}%`);
-  else if (sox.chg5 != null && sox.chg5 <= -5) caution.push(`費半 5 日 ${f(sox.chg5)}%`);
-  if (spx.dd20 <= -8) panic.push(`S&P 500 距 20 日高 ${f(spx.dd20)}%`);
-  else if (spx.chg1 <= -2) caution.push(`S&P 500 前一日 ${f(spx.chg1)}%`);
-  if (twd?.chg5 != null && twd.chg5 >= 1.2) caution.push(`台幣 5 日貶 ${twd.chg5.toFixed(1)}%`);
-  if (y10?.chg5 != null && y10.chg5 >= 25) caution.push(`美債殖利率 5 日 +${y10.chg5.toFixed(0)} 基點`);
+  if (sox.chg1 <= R.sox1Panic) panic.push(`費半前一日 ${f(sox.chg1)}%`);
+  else if (sox.chg1 <= R.sox1Caution) caution.push(`費半前一日 ${f(sox.chg1)}%`);
+  if (sox.chg5 != null && sox.chg5 <= R.sox5Panic) panic.push(`費半 5 日 ${f(sox.chg5)}%`);
+  else if (sox.chg5 != null && sox.chg5 <= R.sox5Caution) caution.push(`費半 5 日 ${f(sox.chg5)}%`);
+  if (spx.dd20 <= R.spxDdPanic) panic.push(`S&P 500 距 20 日高 ${f(spx.dd20)}%`);
+  else if (spx.chg1 <= R.spx1Caution) caution.push(`S&P 500 前一日 ${f(spx.chg1)}%`);
+  if (twd?.chg5 != null && twd.chg5 >= R.twd5Caution) caution.push(`台幣 5 日貶 ${twd.chg5.toFixed(1)}%`);
+  if (y10?.chg5 != null && y10.chg5 >= R.y10Caution) caution.push(`美債殖利率 5 日 +${y10.chg5.toFixed(0)} 基點`);
   const level = panic.length ? 'panic' : caution.length ? 'caution' : 'calm';
   return { level, reasons: [...panic, ...caution], date: sox.date };
+}
+
+/**
+ * 某一天「已知」的國際狀態（研究用）
+ * strict=true：台股開盤前已知（美國、期貨只算到前一天）；false：台股收盤後到隔天開盤前已知
+ */
+export function statsAt(series, ymd, strict, ids = null) {
+  const st = {};
+  for (const ins of INSTRUMENTS) {
+    if (ids && !ids.includes(ins.id)) continue;
+    const s = series?.[ins.id];
+    if (!s) continue;
+    const j = indexAt(s.d, ymd, ins.late ? strict : false);
+    if (j < 0) continue;
+    const x = seriesStats(s, ins.kind, j);
+    if (x) st[ins.id] = x;
+  }
+  return st;
 }
 
 /** 整理成畫面要用的資料：每個指標的狀態＋國際燈號 */

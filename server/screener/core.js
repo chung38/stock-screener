@@ -195,7 +195,14 @@ function scoreOf(row) {
 }
 
 // 名單與個股明細共用同一套判斷，確保兩邊顯示一致
-function evaluate(code, D, p, tech) {
+// 這檔股票所屬產業相關的國際指標，目前波動偏高或劇烈的
+function globalAlerts(ind, gsum) {
+  return industryLinks(ind, gsum)
+    .filter((x) => x.volLevel === 'high' || x.volLevel === 'extreme')
+    .map((x) => ({ id: x.id, name: x.name, level: x.volLevel, chg5: x.chg5, kind: x.kind }));
+}
+
+function evaluate(code, D, p, tech, gsum) {
   const rev = revenueCheck(code, D, p);
   const gm = marginCheck(code, D, p);
   const big = bigHolderCheck(code, D, p);
@@ -217,6 +224,7 @@ function evaluate(code, D, p, tech) {
       t: !!(tech.ok && (tech.trendUp || tech.breakout)),
     },
     entry: tech.ok && tech.trendUp && tech.held ? 'swing' : tech.ok && tech.breakout ? 'breakout' : null,
+    gAlert: gsum ? globalAlerts(info.ind, gsum) : [],
   };
   row.score = scoreOf(row);
   return row;
@@ -239,7 +247,7 @@ export function screenData(D, query = {}) {
     if (!tech.ok) continue;
     if (tech.close < p.minPrice || tech.volLots < p.minVolLots) continue;
 
-    const row = evaluate(code, D, p, tech);
+    const row = evaluate(code, D, p, tech, global);
     if (row.rev.status !== 'ok') continue;
     const { rev, gm } = row;
 
@@ -289,12 +297,15 @@ export function coverage(D, p = DEFAULTS) {
   if (D.holderKeys.length < p.bigWeeks + 1)
     warn.push(`千張大戶只有 ${D.holderKeys.length} 週資料。候選股會自動向集保查詢前幾週；也可以等下週資料進來`);
   if (D.instKeys.length < p.trustDays) warn.push(`投信買賣超只有 ${D.instKeys.length} 天，需要 ${p.trustDays} 天`);
+  const gIds = Object.keys(D.global ?? {});
+  const gTo = gIds.length ? D.global.SOX?.d.at(-1) ?? D.global[gIds[0]].d.at(-1) : null;
   return {
     prices: { days: D.priceKeys.length, from: D.priceKeys[0] ?? null, to: D.priceKeys.at(-1) ?? null },
     revenue: D.revKeys,
     margins: D.marginKeys,
     holders: D.holderKeys,
     inst: { days: D.instKeys.length, to: D.instKeys.at(-1) ?? null },
+    global: { items: gIds.length, to: gTo },
     stocks: Object.keys(D.stocks).length,
     warnings: warn,
   };
@@ -308,7 +319,8 @@ export function detailData(D, code, query = {}) {
   const tech = technical(s, p);
   const n = s.c.length;
   // 判定結果用目前篩選條件；下面的歷史數據另外多抓幾期給畫面看
-  const judged = evaluate(code, D, p, tech);
+  const gsum = globalSummary(D.global);
+  const judged = evaluate(code, D, p, tech, gsum);
   const histRev = revenueCheck(code, D, { ...p, revMonths: 6 });
   const histGm = marginCheck(code, D, { ...p, gmQuarters: 3 });
   return {
@@ -343,6 +355,6 @@ export function detailData(D, code, query = {}) {
     big: bigHolderCheck(code, D, { ...p, bigWeeks: 1 }),
     trust: trustCheck(code, D, { ...p, trustDays: 10 }),
     // 這檔股票所屬產業相關的國際行情／原物料
-    links: industryLinks(D.stocks[code]?.ind, globalSummary(D.global)),
+    links: industryLinks(D.stocks[code]?.ind, gsum),
   };
 }

@@ -67,6 +67,14 @@ export default function ResultList({ rows, threshold, onPick, selected, empty })
                 {row.m === 'TPEX' ? '上櫃' : '上市'}
                 {row.ind ? ` ${row.ind}` : ''}
               </small>
+              {row.gAlert?.length > 0 && (
+                <small
+                  className={`g-tag ${row.gAlert.some((x) => x.level === 'extreme') ? 'extreme' : ''}`}
+                  title="這檔股票所屬產業相關的國際指標，近期波動偏高"
+                >
+                  {row.gAlert.map((x) => x.name).join('、')}波動大
+                </small>
+              )}
             </span>
             <span className="c-price r" role="cell">
               <b className="num">{fmtNum(row.tech.close)}</b>

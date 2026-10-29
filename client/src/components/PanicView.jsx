@@ -1,5 +1,6 @@
 import ResonanceRings from './ResonanceRings.jsx';
 import { fmtNum, fmtPct, tone, MOOD } from '../format.js';
+import { GMOOD } from './GlobalView.jsx';
 
 // 依「策略績效」頁 2 年回測：只有大盤恐慌時逆勢買進才賺錢；大盤沒恐慌時買跌深股平均是虧的
 const ADVICE = {
@@ -10,14 +11,21 @@ const ADVICE = {
 };
 
 export default function PanicView({ data, onPick, selected }) {
-  const { market, panic } = data;
+  const { market, panic, global } = data;
   const mood = MOOD[market?.level] ?? MOOD.unknown;
+  const gm = global?.mood;
   return (
     <div className="panic-view">
       <section className={`panic-banner ${mood.cls}`}>
         <div>
           <h2>{mood.label}</h2>
           <p>{ADVICE[market?.level ?? 'unknown']}</p>
+          {gm && gm.level !== 'unknown' && (
+            <p className="small">
+              國際：<b>{GMOOD[gm.level].label}</b>
+              {gm.reasons?.length ? `（${gm.reasons.join('、')}）` : ''}。回測中國際利空隔天台股常跟著跌，但之後 5 天平均反彈較大，細節見「國際與原物料」。
+            </p>
+          )}
         </div>
         {market?.level && market.level !== 'unknown' && (
           <dl>

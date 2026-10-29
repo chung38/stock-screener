@@ -34,7 +34,7 @@ export default function StatusView({ status, coverage, onUpdate }) {
           <h2>資料更新</h2>
           <p>上次更新：{when(status?.updated?.lastRun)}</p>
           <p className="muted small">
-            GitHub 會在每個交易日 18:40、週六 10:30 自動抓資料並更新這個頁面（GitHub 的排程偶爾會延遲半小時左右）。
+            GitHub 會在每個交易日 18:40、週六 10:30 自動抓資料並更新這個頁面；每個交易日早上 07:20 另外更新國際行情（GitHub 的排程偶爾會延遲半小時左右）。
             想立刻更新，到 GitHub 的 Actions 分頁，選「每日更新」按 Run workflow。
           </p>
           {REPO && (
@@ -98,6 +98,10 @@ export default function StatusView({ status, coverage, onUpdate }) {
             <div>
               <dt>千張大戶</dt>
               <dd>{cov.holders.length ? cov.holders.map(fmtShortDate).join('、') : '無'}</dd>
+            </div>
+            <div>
+              <dt>國際行情</dt>
+              <dd>{cov.global?.items ? `${cov.global.items} 項（到 ${fmtDate(cov.global.to)}）` : '無'}</dd>
             </div>
             <div>
               <dt>法人</dt>

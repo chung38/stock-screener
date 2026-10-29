@@ -2,6 +2,7 @@
 // 原則：訊號在收盤後產生、隔天開盤進場；扣交易成本；基本面依公布時點才可用；不偷看未來
 import { ROUND_TRIP } from '../screener/breakout.js';
 import { shiftMonth, shiftQuarter } from '../lib/dates.js';
+import { INSTRUMENTS, INDUSTRY_LINKS, statsAt, globalMood } from '../screener/global.js';
 
 const MIN_LOTS = 300; // 20 日均量（張）
 const MIN_PRICE = 10;
@@ -688,6 +689,13 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     f.top = ranked.slice(0, 5).map((r) => r.id);
   }
 
+  // ---- 國際狀態（依日期，進場前已知：美股、期貨算到訊號當天的美國收盤，隔天台股開盤前就知道） ----
+  onProgress('國際行情');
+  const hasGlobal = !!A.global?.SOX;
+  const KEY_IDS = ['SOX', 'SPX', 'VIX', 'USDTWD', 'US10Y'];
+  const gAfter = A.dates.map((d) => (hasGlobal ? statsAt(A.global, d, false, KEY_IDS) : {}));
+  const gMoodAfter = gAfter.map((st) => (hasGlobal ? globalMood(st).level : 'unknown'));
+
   // ---- 濾網：基本面、籌碼對各家族最佳組合的影響 ----
   onProgress('濾網');
   const FILTERS = [
@@ -698,6 +706,13 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     ['trust', '＋投信近 5 日買超', (c, g) => F.trustPass(c, g) === true],
     ['rev+trust', '＋營收＋投信', (c, g) => F.revPass(c, g) === true && F.trustPass(c, g) === true],
     ['all', '＋營收＋毛利率＋投信（共振）', (c, g) => F.revPass(c, g) === true && F.gmPass(c, g) === true && F.trustPass(c, g) === true],
+    ...(hasGlobal
+      ? [
+          ['gCalm', '＋國際平穩', (c, g) => gMoodAfter[g] === 'calm'],
+          ['gRisk', '＋國際警戒或恐慌', (c, g) => gMoodAfter[g] === 'caution' || gMoodAfter[g] === 'panic'],
+          ['soxUp', '＋費半在季線之上', (c, g) => gAfter[g].SOX?.aboveMA60 === true],
+        ]
+      : []),
   ];
   const filterTables = [];
   for (const f of families) {
@@ -829,6 +844,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     shortTerm,
     randomPortfolio,
     buyHold,
+    global: hasGlobal ? globalResearch(A, codes) : null,
     ms: Date.now() - t0,
   };
 }
@@ -897,4 +913,150 @@ function portfolio(trades, A, slots = 10, seed = 0) {
     curve,
     start,
   };
+}
+
+// ---------------- 國際行情與原物料 ----------------
+
+/**
+ * 1. 國際燈號出現後，台股當天與之後 5 天的表現（事件研究）
+ * 2. 台股各產業和各國際指標的「每週連動」（相關係數）
+ */
+function globalResearch(A, codes) {
+  const dates = A.dates;
+  const tx = A.taiex;
+  // 台股開盤前已知的國際狀態（美股算到前一晚）
+  const pre = dates.map((d) => statsAt(A.global, d, true));
+  const mood = pre.map((st) => globalMood(st));
+  const conds = [
+    ['calm', '國際平穩', (st, m) => m.level === 'calm'],
+    ['caution', '國際警戒', (st, m) => m.level === 'caution'],
+    ['panic', '國際恐慌', (st, m) => m.level === 'panic'],
+    ['sox3dn', '費半前一晚跌 3% 以上', (st) => st.SOX?.chg1 <= -3],
+    ['sox3up', '費半前一晚漲 3% 以上', (st) => st.SOX?.chg1 >= 3],
+    ['vix25', 'VIX 在 25 以上', (st) => st.VIX?.last >= 25],
+    ['twd1', '台幣 5 日貶值 1% 以上', (st) => st.USDTWD?.chg5 >= 1],
+    ['oil10up', '原油 5 日漲 10% 以上', (st) => st.WTI?.chg5 >= 10],
+    ['oil10dn', '原油 5 日跌 10% 以上', (st) => st.WTI?.chg5 <= -10],
+  ];
+  const all = [];
+  const rows = conds.map(([id, label]) => ({ id, label, xs: [] }));
+  for (let g = 1; g + 5 < dates.length; g++) {
+    if (!tx[g] || !tx[g - 1] || !tx[g + 5] || mood[g].level === 'unknown') continue;
+    const x = [(tx[g] / tx[g - 1] - 1) * 100, (tx[g + 5] / tx[g] - 1) * 100, g];
+    all.push(x);
+    conds.forEach(([, , test], k) => {
+      if (test(pre[g], mood[g])) rows[k].xs.push(x);
+    });
+  }
+  const sum = (xs) => {
+    const n = xs.length;
+    if (!n) return { n: 0 };
+    const avg = (i) => r2(xs.reduce((s, x) => s + x[i], 0) / n);
+    const up = (i) => r2((xs.filter((x) => x[i] > 0).length / n) * 100);
+    let ep = 0;
+    let last = -Infinity;
+    for (const x of xs) {
+      if (x[2] - last > 10) ep++;
+      last = x[2];
+    }
+    return { n, episodes: ep, day: avg(0), dayUp: up(0), next5: avg(1), next5Up: up(1) };
+  };
+  const events = { all: sum(all), rows: rows.map((r) => ({ id: r.id, label: r.label, ...sum(r.xs) })) };
+
+  // 產業等權日報酬 → 每 5 個交易日的報酬
+  const byInd = {};
+  for (const code of codes) {
+    const ind = A.stocks[code]?.ind;
+    if (ind) (byInd[ind] ??= []).push(code);
+  }
+  const W = 5;
+  const weekEnds = [];
+  for (let g = dates.length - 1; g >= W; g -= W) weekEnds.unshift(g);
+  const indRet = {};
+  for (const [ind, list] of Object.entries(byInd)) {
+    if (list.length < 5) continue;
+    const daily = new Array(dates.length).fill(null);
+    const sumR = new Array(dates.length).fill(0);
+    const cnt = new Array(dates.length).fill(0);
+    for (const code of list) {
+      const s = A.series[code];
+      for (let i = 1; i < s.c.length; i++) {
+        if (s.g[i] !== s.g[i - 1] + 1 || s.bad[i] || !s.liquid[i - 1]) continue;
+        sumR[s.g[i]] += s.c[i] / s.c[i - 1] - 1;
+        cnt[s.g[i]]++;
+      }
+    }
+    for (let g = 0; g < dates.length; g++) daily[g] = cnt[g] >= 3 ? sumR[g] / cnt[g] : 0;
+    indRet[ind] = weekEnds.map((g) => {
+      let v = 1;
+      for (let k = g - W + 1; k <= g; k++) v *= 1 + daily[k];
+      return (v - 1) * 100;
+    });
+    indRet[ind].n = list.length;
+  }
+  // 國際指標在同一週的報酬：美股、期貨用台股前一天的收盤（台股隔天才反應）
+  const instRet = {};
+  for (const ins of INSTRUMENTS) {
+    const s = A.global[ins.id];
+    if (!s) continue;
+    const at = (g) => {
+      let lo = 0;
+      let hi = s.d.length - 1;
+      let ans = -1;
+      const ymd = dates[g];
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (ins.late ? s.d[mid] < ymd : s.d[mid] <= ymd) {
+          ans = mid;
+          lo = mid + 1;
+        } else hi = mid - 1;
+      }
+      return ans < 0 ? null : s.c[ans];
+    };
+    instRet[ins.id] = weekEnds.map((g) => {
+      const a = at(g - W);
+      const b = at(g);
+      if (a == null || b == null) return null;
+      return ins.kind === 'yield' ? (b - a) * 100 : (b / a - 1) * 100;
+    });
+  }
+  const corr = (x, y) => {
+    const p = [];
+    for (let i = 0; i < x.length; i++) if (x[i] != null && y[i] != null) p.push([x[i], y[i]]);
+    if (p.length < 30) return null;
+    const mx = p.reduce((s, q) => s + q[0], 0) / p.length;
+    const my = p.reduce((s, q) => s + q[1], 0) / p.length;
+    let sxy = 0;
+    let sxx = 0;
+    let syy = 0;
+    for (const [a, b] of p) {
+      sxy += (a - mx) * (b - my);
+      sxx += (a - mx) ** 2;
+      syy += (b - my) ** 2;
+    }
+    return sxx > 0 && syy > 0 ? r2(sxy / Math.sqrt(sxx * syy)) : null;
+  };
+  const links = {};
+  for (const [ind, r] of Object.entries(indRet)) {
+    links[ind] = { n: r.n, corr: {}, lead: {} };
+    for (const [id, x] of Object.entries(instRet)) {
+      links[ind].corr[id] = corr(x, r);
+      // 領先：國際指標上週的報酬 vs 產業這週的報酬（有沒有預測力）
+      links[ind].lead[id] = corr(x.slice(0, -1), r.slice(1));
+    }
+  }
+  // 每個國際指標連動最強的台股產業
+  const topByInst = {};
+  for (const id of Object.keys(instRet)) {
+    topByInst[id] = Object.entries(links)
+      .map(([ind, v]) => [ind, v.corr[id]])
+      .filter(([, c]) => c != null)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .slice(0, 3);
+  }
+  // 產業對應表裡的關係，實際連動多少
+  const mapped = Object.entries(INDUSTRY_LINKS).flatMap(([ind, list]) =>
+    list.map(([id, dir, why]) => ({ ind, id, dir, why, corr: links[ind]?.corr[id] ?? null, lead: links[ind]?.lead[id] ?? null })),
+  );
+  return { events, weeks: weekEnds.length, links, topByInst, mapped };
 }

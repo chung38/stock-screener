@@ -68,6 +68,7 @@ export async function loadAll() {
     margins,
     marginKeys,
     inst,
+    global: (await readJSON('global.json', null))?.series ?? {},
     dividends: div ? { events, matched } : null,
   };
 }
