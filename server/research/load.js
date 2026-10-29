@@ -1,5 +1,6 @@
 // 研究用：讀取全部歷史資料，並把股價還原權息
 import { readJSON, listKeys } from '../lib/store.js';
+import { adjustSeries, jumpFlags } from '../lib/adjust.js';
 
 /**
  * @returns {{
@@ -37,40 +38,14 @@ export async function loadAll() {
   let matched = 0;
   if (div) {
     for (const [code, list] of Object.entries(div)) {
+      events += list.length;
       const s = series[code];
-      if (!s) continue;
-      const idx = Object.fromEntries(s.d.map((d, i) => [d, i]));
-      // 由新到舊累乘調整係數
-      const factors = [];
-      for (const [ymd, prev, ref] of list) {
-        events++;
-        const j = idx[ymd];
-        if (j == null || j === 0) continue;
-        // 確認是同一個事件：除權息前收盤價要跟前一天收盤接近
-        if (Math.abs(s.c[j - 1] / prev - 1) > 0.02) continue;
-        matched++;
-        factors.push([j, ref / prev]);
-      }
-      if (!factors.length) continue;
-      factors.sort((a, b) => b[0] - a[0]);
-      let f = 1;
-      let k = 0;
-      for (let i = s.c.length - 1; i >= 0; i--) {
-        while (k < factors.length && factors[k][0] > i) f *= factors[k++][1];
-        if (f !== 1) {
-          s.o[i] *= f;
-          s.h[i] *= f;
-          s.l[i] *= f;
-          s.c[i] *= f;
-        }
-      }
+      if (s) matched += adjustSeries(s, list);
     }
   }
 
-  // ---- 標記異常跳動（減資、分割、新股上市等）：單日漲跌超過 10.5% ----
-  for (const s of Object.values(series)) {
-    s.bad = s.c.map((c, i) => i > 0 && Math.abs(c / s.c[i - 1] - 1) > 0.105);
-  }
+  // ---- 標記異常跳動（減資、分割、新股上市等）：還原後單日漲跌仍超過 10.5% ----
+  for (const s of Object.values(series)) s.bad = jumpFlags(s.c);
 
   const revKeys = await listKeys('revenue');
   const rev = {};

@@ -13,6 +13,7 @@ export function pack(D, { minVolLots = 50, minPrice = 3, meta = {} } = {}) {
   const recentRev = D.revKeys.slice(-2);
   const keep = [];
   const series = {};
+  const flags = {}; // 有還原權息或因減資截斷的股票：[還原次數, 截斷日]
   for (const [code, s] of Object.entries(D.series)) {
     // 沒有月營收的股票一定篩不出來，不必打包
     if (!recentRev.some((k) => D.rev[k]?.[code])) continue;
@@ -33,6 +34,7 @@ export function pack(D, { minVolLots = 50, minPrice = 3, meta = {} } = {}) {
       cols[4][j] = Math.round(s.v[i] / 1000); // 張
     });
     series[code] = cols;
+    if (s.adj || s.cut) flags[code] = [s.adj ?? 0, s.cut ?? null];
     keep.push(code);
   }
   const pick = (obj, fn = (x) => x) => {
@@ -48,6 +50,7 @@ export function pack(D, { minVolLots = 50, minPrice = 3, meta = {} } = {}) {
     taiex: D.taiex.map((x) => [x.d, r2(x.c)]),
     stocks: pick(D.stocks),
     series,
+    flags,
     revKeys: D.revKeys,
     rev: Object.fromEntries(
       D.revKeys.map((k) => [k, pick(D.rev[k], (r) => [r.rev, r.ly, r2(r.yoy)])]),
@@ -74,6 +77,11 @@ export function unpack(B) {
       s.l.push(l[j]);
       s.c.push(c[j]);
       s.v.push(v[j] * 1000);
+    }
+    const f = B.flags?.[code];
+    if (f) {
+      s.adj = f[0];
+      if (f[1]) s.cut = f[1];
     }
     series[code] = s;
   }

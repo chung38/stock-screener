@@ -1,6 +1,7 @@
 // 策略實驗室：用 2 年歷史資料比較各種選股策略，分樣本內（前 2/3）與樣本外（後 1/3）驗證
 // 原則：訊號在收盤後產生、隔天開盤進場；扣交易成本；基本面依公布時點才可用；不偷看未來
 import { ROUND_TRIP } from '../screener/breakout.js';
+import { shiftMonth, shiftQuarter } from '../lib/dates.js';
 
 const MIN_LOTS = 300; // 20 日均量（張）
 const MIN_PRICE = 10;
@@ -70,6 +71,13 @@ function prepare(s) {
     }
   }
   s.liquid = s.c.map((c, i) => c >= MIN_PRICE && s.avgV[i] != null && s.avgV[i] / 1000 >= MIN_LOTS);
+  // 近 120 天內有減資／分割等異常跳動：均線、前高都被扭曲，這段期間不產生訊號
+  s.nearBad = new Array(n).fill(false);
+  let lastBad = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (s.bad?.[i]) lastBad = i;
+    s.nearBad[i] = i - lastBad < 120;
+  }
   s.ma10 = sma(s.c, 10);
 
   // KD(9,3,3)：台灣常用算法，K、D 初始 50
@@ -157,12 +165,13 @@ function makeFundamentals(A) {
   // 近 3 個已公布月份年增率都 > 20%
   function revPass(code, g) {
     const k = revAt[g];
-    if (k < 2) return null;
+    if (k < 0) return null;
     const key = `${code}|${k}`;
     if (revCache.has(key)) return revCache.get(key);
     let ok = true;
-    for (let j = k - 2; j <= k; j++) {
-      const r = A.rev[revKeys[j]]?.[code];
+    // 依月份名稱往前推，不假設資料夾裡的月份是連續的
+    for (let j = 2; j >= 0; j--) {
+      const r = A.rev[shiftMonth(revKeys[k], -j)]?.[code];
       if (!r || !(r.ly > 0) || r.yoy == null) {
         ok = null;
         break;
@@ -173,14 +182,11 @@ function makeFundamentals(A) {
     return ok;
   }
 
-  const single = (code, idx) => {
-    const k = gmKeys[idx];
+  const single = (code, k) => {
     const cur = A.margins[k]?.[code];
     if (!cur) return null;
     if (k.endsWith('Q1')) return cur.gm;
-    const prevKey = gmKeys[idx - 1];
-    if (!prevKey || prevKey.slice(0, 4) !== k.slice(0, 4)) return null;
-    const prev = A.margins[prevKey]?.[code];
+    const prev = A.margins[shiftQuarter(k, -1)]?.[code];
     if (!prev) return null;
     const rev = cur.rev - prev.rev;
     if (!(rev > 0)) return null;
@@ -190,12 +196,13 @@ function makeFundamentals(A) {
   // 單季毛利率連續 2 季改善
   function gmPass(code, g) {
     const k = gmAt[g];
-    if (k < 2) return null;
+    if (k < 0) return null;
     const key = `${code}|${k}`;
     if (gmCache.has(key)) return gmCache.get(key);
-    const a = single(code, k - 2);
-    const b = single(code, k - 1);
-    const c = single(code, k);
+    const q = gmKeys[k];
+    const a = single(code, shiftQuarter(q, -2));
+    const b = single(code, shiftQuarter(q, -1));
+    const c = single(code, q);
     const ok = a == null || b == null || c == null ? null : c > b && b > a;
     gmCache.set(key, ok);
     return ok;
@@ -466,6 +473,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
       const s = A.series[code];
       for (const i of signalFn(s, code)) {
         const g = s.g[i];
+        if (s.nearBad[i]) continue;
         if (filter && !filter(code, g)) continue;
         const t = simulate(s, i, exitId);
         if (!t) continue;

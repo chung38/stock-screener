@@ -1,4 +1,4 @@
-// 命令列：npm run update / backfill / diagnose / export
+// 命令列：npm run update / backfill / diagnose / research …（不帶參數執行可看全部指令）
 import path from 'node:path';
 import { runUpdate, runResearchBackfill, jobState } from './jobs/update.js';
 import { diagnose } from './jobs/diagnose.js';
@@ -75,7 +75,19 @@ if (cmd === 'diagnose') {
   const r = await exportBacktest(out);
   console.log(`已輸出 ${r.file}：${r.days} 個交易日，交易數 ${r.variants}`);
 } else {
-  console.log('用法：node server/cli.js update | backfill | diagnose | export [輸出檔] | backtest [輸出檔]');
+  console.log(
+    [
+      '用法：node server/cli.js <指令>',
+      '  update               每日更新',
+      '  backfill             建立／補齊歷史資料（PRICE_DAYS 天股價）',
+      '  research-data        補齊 2 年月營收、營益分析、法人資料',
+      '  dividends            重抓近 28 個月除權息資料',
+      '  diagnose             測試每個資料來源',
+      '  export [輸出檔]      輸出手機版 data.json',
+      '  backtest [輸出檔]    輸出突破策略回測',
+      '  research [輸出檔]    輸出策略研究結果',
+    ].join('\n'),
+  );
 }
 
 process.exit(process.exitCode ?? 0);

@@ -1,5 +1,6 @@
 // 把累積的 JSON 檔整理成篩選要用的結構
 import { readJSON, listKeys } from '../lib/store.js';
+import { adjustSeries, lastJump } from '../lib/adjust.js';
 
 export async function loadData({ priceDays = 110 } = {}) {
   const stocks = (await readJSON('stocks.json', {})) ?? {};
@@ -23,6 +24,18 @@ export async function loadData({ priceDays = 110 } = {}) {
       s.v.push(r[4]);
     }
   });
+
+  // 還原權息：除權息那天的跳空不算下跌，均線、前高、跌幅才正確（最新收盤不變）
+  const div = (await readJSON('dividends.json', null)) ?? {};
+  for (const [code, s] of Object.entries(series)) {
+    s.adj = adjustSeries(s, div[code]);
+    // 減資、分割、新上市造成的跳動：之前的價格無法比較，只用跳動之後的資料
+    const j = lastJump(s.c);
+    if (j > 0) {
+      s.cut = s.d[j];
+      for (const k of ['d', 'o', 'h', 'l', 'c', 'v']) s[k] = s[k].slice(j);
+    }
+  }
 
   const revKeys = (await listKeys('revenue')).slice(-8);
   const rev = Object.fromEntries(await Promise.all(revKeys.map(async (k) => [k, await readJSON(`revenue/${k}.json`, {})])));

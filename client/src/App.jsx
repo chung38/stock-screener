@@ -79,7 +79,11 @@ export default function App() {
 
   const apply = (p) => {
     setParams(p);
-    localStorage.setItem(LS_KEY, JSON.stringify(p));
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(p));
+    } catch {
+      /* 無痕模式等情況存不了，條件只在這次有效 */
+    }
     setFiltersOpen(false);
   };
 
@@ -261,7 +265,12 @@ export default function App() {
           {tab === 'panic' && data && !noData && <PanicView data={data} onPick={setPicked} selected={picked} />}
 
           {tab === 'breakout' && (
-            <BreakoutView onPick={setPicked} selected={picked} resonance={new Set((data?.list ?? []).map((x) => x.code))} />
+            <BreakoutView
+              onPick={setPicked}
+              selected={picked}
+              market={data?.market}
+              resonance={new Set((data?.list ?? []).map((x) => x.code))}
+            />
           )}
 
           {tab === 'research' && <ResearchView />}

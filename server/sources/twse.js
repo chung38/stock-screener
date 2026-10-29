@@ -98,7 +98,9 @@ export function parseRevenueOpenApi(arr) {
     const raw = clean(o[findKey(o, '資料年月')]);
     if (raw.length < 4) continue;
     const ym = ymKey(Number(raw.slice(0, -2)) + 1911, Number(raw.slice(-2)));
-    const rev = num(o[findKey(o, ['當月營收'], ['營業收入', '當月'])]);
+    // 「當月營收」也是「去年當月營收」的一部分，要排除，不能靠欄位順序
+    const revKey = Object.keys(o).find((x) => x.includes('當月營收') && !x.includes('去年') && !x.includes('上月'));
+    const rev = num(o[revKey]);
     const ly = num(o[findKey(o, ['去年當月營收'])]);
     let yoy = num(o[findKey(o, ['去年同月增減'])]);
     if (yoy == null && rev != null && ly) yoy = ((rev - ly) / Math.abs(ly)) * 100;

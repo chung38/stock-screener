@@ -14,6 +14,7 @@ const loadRule = () => {
 
 // 規則對應到回測的哪一組
 function variantOf(rule) {
+  if (rule.lookback === 120 && rule.volMult === 1.5 && rule.holdDays === 2) return 'F';
   if (rule.lookback === 60 && rule.volMult === 1.5 && rule.holdDays === 2) return 'E';
   if (rule.lookback !== 20) return null;
   if (rule.volMult === 0 && rule.holdDays === 0) return 'A';
@@ -141,14 +142,18 @@ function StatsTable({ rows, first, baseline }) {
   );
 }
 
-export default function BreakoutView({ onPick, selected, resonance }) {
+export default function BreakoutView({ onPick, selected, resonance, market }) {
   const [rule, setRule] = useState(loadRule);
   const [today, setToday] = useState(null);
   const [bt, setBt] = useState(undefined);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(rule));
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(rule));
+    } catch {
+      /* 無痕模式等情況存不了，不影響使用 */
+    }
     getBreakouts(rule)
       .then(setToday)
       .catch((e) => setErr(e.message));
@@ -174,7 +179,7 @@ export default function BreakoutView({ onPick, selected, resonance }) {
           收盤突破前高、當天成交量高於近 20 日均量，而且之後收盤都沒有跌回前高。近 5 個交易日內發生的突破都列出來。
         </p>
         <div className="rule-bar">
-          <Seg label="前高" value={rule.lookback} onChange={set('lookback')} options={[[20, '20 日'], [60, '60 日']]} />
+          <Seg label="前高" value={rule.lookback} onChange={set('lookback')} options={[[20, '20 日'], [60, '60 日'], [120, '120 日']]} />
           <Seg
             label="量比至少"
             value={rule.volMult}
@@ -183,6 +188,11 @@ export default function BreakoutView({ onPick, selected, resonance }) {
           />
           <Seg label="站穩" value={rule.holdDays} onChange={set('holdDays')} options={[[0, '當天'], [1, '1 天'], [2, '2 天'], [3, '3 天']]} />
         </div>
+        {market?.belowMA60 && (
+          <ul className="warn-list compact">
+            <li>大盤目前在季線之下。策略績效頁的回測中，大盤在季線下出現的突破訊號平均是虧損的，進場前要更保守。</li>
+          </ul>
+        )}
         {vstat?.n ? (
           <p className="hist-note">
             歷史上這組條件（{vid}）：{vstat.n} 筆，隔日上漲 {pct(vstat.nextUpRate)}，10 日平均 {fmtPct(vstat.avg10, 2)}（已扣成本），假突破{' '}
@@ -256,7 +266,7 @@ export default function BreakoutView({ onPick, selected, resonance }) {
             <h3>各組條件比較</h3>
             <StatsTable rows={bt.variants} first="條件" baseline={bt.baseline} />
             <p className="muted small">
-              報酬從進場日收盤算起，已扣來回成本 {fmtNum(bt.cost.roundTrip, 3)}%（手續費 {bt.cost.fee}% ×2 不打折、證交稅 {bt.cost.tax}%、滑價{' '}
+              股價已還原權息；減資、分割前的價格不列入。報酬從進場日收盤算起，已扣來回成本 {fmtNum(bt.cost.roundTrip, 3)}%（手續費 {bt.cost.fee}% ×2 不打折、證交稅 {bt.cost.tax}%、滑價{' '}
               {bt.cost.slip}% ×2）。勝率＝扣成本後賺錢的比例。假突破＝進場後 {bt.rules.falseDays} 天內收盤跌回前高。同一檔 {bt.rules.cooldown}{' '}
               個交易日內只算第一次突破；只計 20 日均量 {bt.rules.minVolLots} 張以上、股價 {bt.rules.minPrice} 元以上。
             </p>
@@ -328,7 +338,7 @@ export default function BreakoutView({ onPick, selected, resonance }) {
             </details>
 
             <p className="footnote">
-              歷史回測不代表未來會重演。沒有計入漲跌停買不到或賣不掉、除權息、下市股票等因素，樣本數少的組別差異可能只是巧合。
+              歷史回測不代表未來會重演。沒有計入漲跌停買不到或賣不掉、下市股票等因素，樣本數少的組別差異可能只是巧合。這裡以確認當天收盤價進場，比較樂觀；「策略績效」頁改用隔天開盤進場，結果比較保守。
             </p>
           </>
         )}

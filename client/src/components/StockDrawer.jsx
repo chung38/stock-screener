@@ -95,6 +95,12 @@ export default function StockDrawer({ code, params, onClose }) {
           <ResonanceRings pillars={pillars} size={64} showLabels />
 
           {t?.ok ? <PriceChart chart={d.chart} /> : <p className="muted">{t?.reason}</p>}
+          {t?.ok && (d.chart.adjusted || d.chart.cut) && (
+            <p className="muted small chart-note">
+              {d.chart.adjusted ? 'K 線已還原權息（除權息的跳空不算下跌，最新收盤不變）。' : ''}
+              {d.chart.cut ? `${fmtShortDate(d.chart.cut)} 有減資、分割或剛上市，之前的價格無法比較，不列入計算。` : ''}
+            </p>
+          )}
 
           <section className="blk fund">
             <h3>營收年增率</h3>

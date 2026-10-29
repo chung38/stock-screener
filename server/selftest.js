@@ -64,6 +64,36 @@ test('OpenAPI 月營收（實際欄位）', () => {
   assert.equal(r['2026-09']['2330'].yoy, 54.64861207105231);
 });
 
+test('OpenAPI 月營收：欄位順序不同也不會拿錯（去年當月營收在前）', () => {
+  const r = parseRevenueOpenApi([
+    {
+      資料年月: '11509',
+      公司代號: '2330',
+      公司名稱: '台積電',
+      '營業收入-去年當月營收': '100',
+      '營業收入-上月營收': '120',
+      '營業收入-當月營收': '150',
+      '營業收入-去年同月增減(%)': '50',
+    },
+  ]);
+  assert.equal(r['2026-09']['2330'].rev, 150);
+  assert.equal(r['2026-09']['2330'].ly, 100);
+});
+
+const { adjustSeries, lastJump } = await import('./lib/adjust.js');
+test('還原權息：除息前的價格往下調，最新價格不變', () => {
+  const s = { d: ['1', '2', '3', '4'], o: [100, 100, 95, 96], h: [100, 100, 95, 96], l: [100, 100, 95, 96], c: [100, 100, 95, 96] };
+  assert.equal(adjustSeries(s, [['3', 100, 95]]), 1);
+  assert.deepEqual(s.c, [95, 95, 95, 96]);
+  // 除權息前收盤價對不上（不同事件）就不調整
+  const t = { d: ['1', '2'], o: [50, 48], h: [50, 48], l: [50, 48], c: [50, 48] };
+  assert.equal(adjustSeries(t, [['2', 100, 95]]), 0);
+});
+test('異常跳動（減資）偵測', () => {
+  assert.equal(lastJump([10, 10.5, 11, 22, 22.5]), 3);
+  assert.equal(lastJump([10, 11, 12.1, 13.3]), -1); // 連續漲停不算
+});
+
 test('OpenAPI 營益分析（實際欄位）', () => {
   const r = parseMarginOpenApi([
     {
@@ -128,6 +158,11 @@ for (const [code, k] of Object.entries(kinds)) {
   }
   paths[code] = c;
 }
+// 1103 在 15 天前除息 5%（股價跳空），1130 在 30 天前減資（股價變 2 倍）
+const EXD = N - 15;
+const exPrev = paths['1103'][EXD - 1];
+for (let i = EXD; i < N; i++) paths['1103'][i] = Math.round(paths['1103'][i] * 0.95 * 100) / 100;
+for (let i = N - 30; i < N; i++) paths['1130'][i] = Math.round(paths['1130'][i] * 2 * 100) / 100;
 
 let taiex = 22000;
 for (let i = 0; i < N; i++) {
@@ -139,6 +174,7 @@ for (let i = 0; i < N; i++) {
   taiex *= i > N - 6 ? 0.985 : 1.001;
   await writeJSON(`prices/${days[i]}.json`, { taiex, s });
 }
+await writeJSON('dividends.json', { 1103: [[days[EXD], exPrev, Math.round(exPrev * 0.95 * 100) / 100]] });
 await writeJSON(
   'stocks.json',
   Object.fromEntries(Object.entries(kinds).map(([c, k]) => [c, { n: `測試${k}${c}`, m: 'TWSE', ind: '測試業' }])),
@@ -169,7 +205,10 @@ for (const [k, rows] of Object.entries(cum)) await writeJSON(`margins/${k}.json`
 const weeks = [days[N - 11], days[N - 6], days[N - 1]];
 for (let w = 0; w < weeks.length; w++) {
   const rows = {};
-  for (const [code, k] of Object.entries(kinds)) rows[code] = { b: 50 + (k === 'C' ? -w : w * 0.5), r: 20 - w, bp: 100, tp: 5000 };
+  for (const [code, k] of Object.entries(kinds)) {
+    if (code === '1102' && w === 1) continue; // 1102 中間缺一週
+    rows[code] = { b: 50 + (k === 'C' ? -w : w * 0.5), r: 20 - w, bp: 100, tp: 5000 };
+  }
   await writeJSON(`holders/${weeks[w]}.json`, { rows });
 }
 for (let i = N - 6; i < N; i++) {
@@ -209,13 +248,37 @@ test('個股明細有均線與扣抵位置', () => {
   assert.equal(det.chart.deduct[20], N - 20);
 });
 test('技術面資料不足時回報原因', () => assert.equal(technical({ c: [1, 2], h: [], l: [], v: [] }, {}).ok, false));
+const { bigHolderCheck, coerceParams } = await import('./screener/core.js');
+const { loadData: loadD } = await import('./screener/data.js');
+const D0 = await loadD();
+test('千張大戶中間缺一週時不判定', () => {
+  // 1102 缺了上一週，不能把「跨兩週」的變化當成一週增加
+  assert.equal(bigHolderCheck('1102', D0, coerceParams({})).status, 'nodata');
+  assert.equal(bigHolderCheck('1101', D0, coerceParams({})).status, 'ok');
+  assert.equal(bigHolderCheck('1101', D0, coerceParams({ bigWeeks: 2 })).status, 'ok');
+  assert.equal(bigHolderCheck('1102', D0, coerceParams({ bigWeeks: 2 })).status, 'nodata');
+});
+const det03 = await stockDetail('1103');
+test('除息跳空已還原（不會被當成下跌）', () => {
+  const c = det03.chart.c;
+  const i = det03.chart.d.indexOf(days[EXD]);
+  assert.ok(i > 0);
+  assert.ok(c[i] / c[i - 1] - 1 > -0.02, `除息日變動 ${((c[i] / c[i - 1] - 1) * 100).toFixed(2)}%`);
+  assert.equal(det03.chart.adjusted, true);
+  assert.equal(c.at(-1), paths['1103'][N - 1]); // 最新收盤不變
+});
+const det30 = await stockDetail('1130');
+test('減資之前的價格不列入', () => {
+  assert.equal(det30.chart.cut, days[N - 30]);
+  assert.equal(det30.chart.d[0], days[N - 30]);
+});
 
 const { runBacktest, currentBreakouts } = await import('./screener/breakout.js');
 const { loadData } = await import('./screener/data.js');
 const DD = await loadData({ priceDays: 600 });
 const bt = runBacktest(DD);
-test('突破回測可以執行並產生五組條件', () => {
-  assert.equal(bt.variants.length, 5);
+test('突破回測可以執行並產生六組條件', () => {
+  assert.equal(bt.variants.length, 6);
   assert.ok(bt.variants[0].signals >= bt.variants[1].signals, '加量能條件後次數不應增加');
   assert.ok(bt.buckets.length >= 4);
 });

@@ -129,11 +129,13 @@ export function bigHolderCheck(code, D, p) {
     const row = D.holders[k]?.[code];
     if (row) pts.push({ d: k, b: row.b, r: row.r, bp: row.bp });
   }
-  const latestKey = D.holderKeys[D.holderKeys.length - 1];
-  if (pts.length < p.bigWeeks + 1 || pts[pts.length - 1].d !== latestKey) {
-    return { status: 'nodata', pts };
+  // 要連續的最近幾週都有資料；中間缺一週就不能說是「每週增加」
+  const keys = D.holderKeys.slice(-(p.bigWeeks + 1));
+  const byDate = new Map(pts.map((x) => [x.d, x]));
+  const use = keys.map((k) => byDate.get(k));
+  if (keys.length < p.bigWeeks + 1 || use.some((x) => !x)) {
+    return { status: 'nodata', pts: pts.slice(-6) };
   }
-  const use = pts.slice(-(p.bigWeeks + 1));
   let pass = true;
   for (let i = 1; i < use.length; i++) if (!(use[i].b - use[i - 1].b > p.bigMinDelta)) pass = false;
   const last = use[use.length - 1];
@@ -328,6 +330,8 @@ export function detailData(D, code, query = {}) {
       ma20: smaSeries(s.c, 20),
       ma60: smaSeries(s.c, 60),
       deduct: { 5: n >= 5 ? n - 5 : null, 20: n >= 20 ? n - 20 : null, 60: n >= 60 ? n - 60 : null },
+      adjusted: (s.adj ?? 0) > 0, // 期間內有除權息，K 線已還原
+      cut: s.cut ?? null, // 減資／分割／新上市日，之前的價格不列入
     },
     tech,
     // 資料不足時 months/qs 仍會帶回已有的部分

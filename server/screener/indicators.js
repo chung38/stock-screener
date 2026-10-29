@@ -72,7 +72,10 @@ const round = (x, d = 2) => (x == null || !Number.isFinite(x) ? null : Math.roun
 export function technical(s, p) {
   const c = s.c;
   const L = c.length;
-  if (L < 22) return { ok: false, reason: `股價資料只有 ${L} 天` };
+  if (L < 22) {
+    const why = s.cut ? `${s.cut.slice(4, 6)}/${s.cut.slice(6)} 有減資、分割或剛上市，之後` : '';
+    return { ok: false, reason: `${why}股價資料只有 ${L} 天，還不能判斷技術面` };
+  }
   const close = c[L - 1];
   const prevClose = c[L - 2];
 

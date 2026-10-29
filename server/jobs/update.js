@@ -3,13 +3,17 @@ import * as twse from '../sources/twse.js';
 import * as tpex from '../sources/tpex.js';
 import * as mops from '../sources/mops.js';
 import * as tdcc from '../sources/tdcc.js';
+import { fetchMonth as fetchDividendMonth } from '../sources/dividends.js';
 import { readJSON, writeJSON, listKeys, exists } from '../lib/store.js';
 import {
   todayStr,
   nowTPE,
   recentWeekdays,
+  isWeekend,
+  addDays,
   shiftMonth,
   parseYm,
+  ymKey,
   shiftQuarter,
   parseQ,
   expectedLatestQuarter,
@@ -190,25 +194,59 @@ async function mergeRevenue(byYm) {
 const stripMeta = (rows) =>
   Object.fromEntries(Object.entries(rows).map(([c, r]) => [c, { rev: r.rev, ly: r.ly, yoy: r.yoy }]));
 
+// 每個期別上市、上櫃各有幾家公司（用 stocks.json 的市場別判斷）
+async function marketCounts(dir) {
+  const stocks = (await readJSON('stocks.json', {})) ?? {};
+  const out = {};
+  for (const k of await listKeys(dir)) {
+    const f = (await readJSON(`${dir}/${k}.json`, {})) ?? {};
+    const c = { sii: 0, otc: 0 };
+    for (const code of Object.keys(f)) {
+      const m = stocks[code]?.m;
+      if (m === 'TWSE') c.sii++;
+      else if (m === 'TPEX') c.otc++;
+    }
+    out[k] = c;
+  }
+  return out;
+}
+
 // 觀測站回補：periods 依新到舊；某市場 OpenAPI 已提供的期別就跳過。
-// 最新一期不標記完成（公司陸續申報，每天重抓）
-async function backfillFromMops({ kind, label, periods, latest, foundBy, fetchOne, merge }) {
+// 最新一期不標記完成（公司陸續申報，每天重抓）。
+// 家數明顯少於其他期別（例如網頁只抓到一半）視為不完整，即使標記過完成也重抓。
+export async function backfillFromMops({ kind, dir, label, periods, latest, foundBy, fetchOne, merge }) {
   const meta = await getMeta();
   meta.complete ??= {};
+  const counts = await marketCounts(dir);
+  const ref = (market) => Math.max(0, ...Object.values(counts).map((c) => c[market]));
+  const looksComplete = (k, market) => {
+    const r = ref(market);
+    return !r || (counts[k]?.[market] ?? 0) >= r * 0.9;
+  };
   stage(`${label}（觀測站回補）`, periods.length);
   for (const k of periods) {
     for (const market of ['sii', 'otc']) {
       const doneKey = `${kind}:${k}:${market}`;
-      if (meta.complete[`${kind}:${k}`] || meta.complete[doneKey]) continue;
+      const flagged = meta.complete[`${kind}:${k}`] || meta.complete[doneKey];
+      if (flagged && looksComplete(k, market)) continue;
       if (foundBy[market].has(k)) continue;
       try {
         const rows = await fetchOne(market, k);
         if (rows && Object.keys(rows).length) {
           await merge({ [k]: rows });
-          if (k !== latest) {
-            const m2 = await getMeta();
+          Object.assign(counts, await marketCounts(dir));
+          const m2 = await getMeta();
+          if (k !== latest && looksComplete(k, market)) {
             m2.complete = { ...m2.complete, [doneKey]: true };
-            await saveMeta(m2);
+          } else if (flagged) {
+            // 之前誤標為完成：取消標記，下次再補
+            delete m2.complete[doneKey];
+            delete m2.complete[`${kind}:${k}`];
+          }
+          await saveMeta(m2);
+          if (flagged) {
+            const name = `${k} ${market === 'sii' ? '上市' : '上櫃'}${label}`;
+            await log('info', looksComplete(k, market) ? `${name}之前只抓到一部分，已補齊` : `${name}仍不完整，下次更新再試`);
           }
         }
       } catch (e) {
@@ -238,6 +276,7 @@ async function updateRevenue() {
   const latest = [...foundBy.sii, ...foundBy.otc].sort().at(-1) ?? expectedLatestRevenueMonth();
   await backfillFromMops({
     kind: 'rev',
+    dir: 'revenue',
     label: '月營收',
     periods: [0, 1, 2, 3, 4].map((i) => shiftMonth(latest, -i)),
     latest,
@@ -271,7 +310,9 @@ async function updateMargins() {
       await mergeMargins(byQ);
       for (const k of Object.keys(byQ)) foundBy[market].add(k);
     } catch (e) {
-      await log('warn', `${label}營益分析 OpenAPI：${e.message}`);
+      // 櫃買這支 OpenAPI 目前固定回網頁而不是資料，改由觀測站補，不算警告
+      if (market === 'otc') console.log(`[info] ${label}營益分析 OpenAPI 無法使用，改用觀測站`);
+      else await log('warn', `${label}營益分析 OpenAPI：${e.message}`);
     }
   }
   const latest = [...foundBy.sii, ...foundBy.otc].sort().at(-1) ?? expectedLatestQuarter();
@@ -284,6 +325,7 @@ async function updateMargins() {
   }
   await backfillFromMops({
     kind: 'gm',
+    dir: 'margins',
     label: '營益分析',
     periods: [...need].sort().reverse(),
     latest,
@@ -350,6 +392,49 @@ async function backfillHolders(weeksNeeded = 3) {
   for (const d of dates) if (files[d]) await writeJSON(`holders/${d}.json`, files[d]);
 }
 
+// ---------- 除權息（還原股價用） ----------
+
+async function updateDividends() {
+  stage('除權息', 1);
+  const all = (await readJSON('dividends.json', null)) ?? {};
+  const t = todayStr();
+  const cur = ymKey(Number(t.slice(0, 4)), Number(t.slice(4, 6)));
+  // 平常抓本月與上月；還沒有資料時抓近 6 個月（篩選用的股價約 5 個月）
+  const back = Object.keys(all).length ? 1 : 5;
+  let added = 0;
+  for (let i = back; i >= 0; i--) {
+    const { y, m } = parseYm(shiftMonth(cur, -i));
+    const r = await fetchDividendMonth(y, m);
+    for (const [code, ymd, prev, ref] of r.rows) {
+      const list = (all[code] ??= []);
+      if (list.some((x) => x[0] === ymd)) continue;
+      list.push([ymd, prev, ref]);
+      added++;
+    }
+    if (!r.markets.length && r.errors.length) await log('warn', `除權息 ${y}/${m}：${r.errors[0]}`);
+  }
+  if (added) {
+    // 只留近 30 個月，並依日期排序
+    const cutoff = `${shiftMonth(cur, -30).replace('-', '')}01`;
+    for (const [code, list] of Object.entries(all)) {
+      const keep = list.filter((x) => x[0] >= cutoff).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      if (keep.length) all[code] = keep;
+      else delete all[code];
+    }
+    await writeJSON('dividends.json', all);
+  }
+  state.done = 1;
+}
+
+// 每日更新要往回看幾個平日：至少 8 天；中間停了很久（例如電腦幾週沒開）就補到上次的資料為止
+async function dailyWindow(today) {
+  const last = (await listKeys('prices')).at(-1);
+  if (!last) return 8;
+  let n = 0;
+  for (let d = today; d > last && n < 260; d = addDays(d, -1)) if (!isWeekend(d)) n++;
+  return Math.max(8, n + 2);
+}
+
 // ---------- 對外 ----------
 
 export async function runUpdate({ backfill = false } = {}) {
@@ -368,11 +453,13 @@ export async function runUpdate({ backfill = false } = {}) {
     const today = todayStr();
     const have = (await listKeys('prices')).length;
     const deep = backfill || have < 30;
-    const priceDates = recentWeekdays(today, deep ? Math.ceil(PRICE_DAYS * 1.12) : 8).reverse();
-    await log('info', deep ? `開始建立歷史資料（約 ${PRICE_DAYS} 個交易日）` : '開始每日更新');
+    const win = deep ? 0 : await dailyWindow(today);
+    const priceDates = recentWeekdays(today, deep ? Math.ceil(PRICE_DAYS * 1.12) : win).reverse();
+    await log('info', deep ? `開始建立歷史資料（約 ${PRICE_DAYS} 個交易日）` : win > 8 ? `開始每日更新（補齊近 ${win} 個平日）` : '開始每日更新');
 
     await updatePrices(priceDates);
-    await updateInst(recentWeekdays(today, deep ? INST_DAYS + 4 : 8).reverse());
+    await updateInst(recentWeekdays(today, deep ? INST_DAYS + 4 : win).reverse());
+    await updateDividends();
     await updateRevenue();
     await updateMargins();
     await updateHolders();
@@ -405,6 +492,7 @@ export async function runResearchBackfill() {
     const revLatest = (await listKeys('revenue')).at(-1) ?? expectedLatestRevenueMonth();
     await backfillFromMops({
       kind: 'rev',
+      dir: 'revenue',
       label: '月營收（2 年）',
       periods: Array.from({ length: 26 }, (_, i) => shiftMonth(revLatest, -i)),
       latest: revLatest,
@@ -418,6 +506,7 @@ export async function runResearchBackfill() {
     const gmLatest = (await listKeys('margins')).at(-1) ?? expectedLatestQuarter();
     await backfillFromMops({
       kind: 'gm',
+      dir: 'margins',
       label: '營益分析（2 年）',
       periods: Array.from({ length: 10 }, (_, i) => shiftQuarter(gmLatest, -i)),
       latest: gmLatest,

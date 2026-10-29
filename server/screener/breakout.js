@@ -1,5 +1,6 @@
 // 突破策略：今日訊號＋歷史回測
 // 規則：收盤突破前 N 日最高價、當天量 ≥ 均量 k 倍、之後 m 天收盤都沒跌回前高
+// 股價已在 loadData 還原權息；減資等異常跳動之前的資料不使用
 // 不依賴 Node，伺服器與瀏覽器共用
 
 export const BREAKOUT_DEFAULTS = {
@@ -38,7 +39,7 @@ function coerce(q = {}) {
     const n = Number(q[k]);
     if (q[k] != null && q[k] !== '' && Number.isFinite(n)) p[k] = n;
   }
-  p.lookback = p.lookback === 60 ? 60 : 20;
+  p.lookback = [20, 60, 120].includes(p.lookback) ? p.lookback : 20;
   p.holdDays = Math.min(Math.max(0, Math.round(p.holdDays)), 5);
   p.recentDays = Math.min(Math.max(1, Math.round(p.recentDays)), 10);
   return p;
@@ -187,6 +188,7 @@ const VARIANTS = [
   { id: 'C', name: '＋量 1.5 倍＋站穩 2 天', lookback: 20, volMult: 1.5, holdDays: 2 },
   { id: 'D', name: '＋量 2 倍＋站穩 2 天', lookback: 20, volMult: 2, holdDays: 2 },
   { id: 'E', name: '突破 60 日前高＋量 1.5 倍＋站穩 2 天', lookback: 60, volMult: 1.5, holdDays: 2 },
+  { id: 'F', name: '突破 120 日前高＋量 1.5 倍＋站穩 2 天', lookback: 120, volMult: 1.5, holdDays: 2 },
 ];
 
 const BUCKETS = [

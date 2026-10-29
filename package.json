@@ -13,6 +13,9 @@
     "start": "node server/index.js",
     "update": "node server/cli.js update",
     "backfill": "node server/cli.js backfill",
+    "research-data": "node server/cli.js research-data",
+    "dividends": "node server/cli.js dividends",
+    "research": "node --max-old-space-size=6000 server/cli.js research",
     "diagnose": "node server/cli.js diagnose",
     "selftest": "node server/selftest.js"
   },
