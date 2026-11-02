@@ -128,6 +128,9 @@ function prepare(s) {
     s.bbU[i] = m + 2 * sd;
     s.bbL[i] = m - 2 * sd;
   }
+  // MACD 柱狀體（DIF − 訊號線）、布林通道寬度（上下軌距離 ÷ 中線）
+  s.osc = s.dif.map((x, i) => (x != null && s.macdSig[i] != null ? x - s.macdSig[i] : null));
+  s.bbw = s.bbU.map((u, i) => (u != null && s.ma20[i] > 0 ? (u - s.bbL[i]) / s.ma20[i] : null));
 }
 
 // ---------------- 基本面（依公布時點） ----------------
@@ -234,6 +237,7 @@ const EXITS = {
   H20: { name: '持有 20 天', type: 'hold', n: 20 },
   MA20: { name: '跌破月線出場（停損 8%，最多 60 天）', type: 'ma', max: 60, stop: 0.08 },
   REB: { name: '反彈到週線出場（停損近 5 日低點 −3%，最多 5 天）', type: 'rebound', max: 5 },
+  MACDX: { name: 'MACD 柱狀體轉負出場（最多 60 天）', type: 'osc', max: 60 },
 };
 
 /** 訊號日 i 收盤後產生 → i+1 開盤進場 */
@@ -258,6 +262,14 @@ function simulate(s, i, exitId) {
       }
     }
     if (x == null) return null; // 還沒出場
+  } else if (ex.type === 'osc') {
+    for (let k = e; k < n; k++) {
+      if ((s.osc[k] != null && s.osc[k] < 0) || k - e + 1 >= ex.max) {
+        x = k;
+        break;
+      }
+    }
+    if (x == null) return null;
   } else if (ex.type === 'rebound') {
     const stop = (s.low5[i] ?? entry) * 0.97;
     for (let k = e; k < n; k++) {
@@ -363,6 +375,34 @@ export const INDICATORS = [
   ['limitUp', '漲停板隔天追進', (s, i) => s.c[i] / s.c[i - 1] >= 1.095 && s.c[i] === s.h[i]],
   ['gap', '跳空上漲（開盤高於前日最高、收紅）', (s, i) => s.o[i] > s.h[i - 1] && s.c[i] > s.o[i]],
 ];
+
+/**
+ * 布林通道＋MACD：MACD 柱狀體由負轉正（win 天內）、布林開口放大、股價站上月線且月線上彎
+ * bb：none 不看布林｜up1 通道寬度比前一天大｜up5 比 5 天前大 10% 以上
+ */
+function bbMacdSignals(s, p) {
+  const out = [];
+  let last = -Infinity;
+  for (let i = 61; i < s.c.length; i++) {
+    if (!s.liquid[i] || s.osc[i] == null || !(s.osc[i] > 0)) continue;
+    let turned = false;
+    for (let k = 0; k <= p.win; k++) {
+      const j = i - k;
+      if (s.osc[j] > 0 && s.osc[j - 1] != null && s.osc[j - 1] <= 0) {
+        turned = true;
+        break;
+      }
+    }
+    if (!turned) continue;
+    if (p.ma && !(s.c[i] > s.ma20[i] && s.ma20[i] > s.ma20[i - 1])) continue;
+    if (p.bb === 'up1' && !(s.bbw[i] > s.bbw[i - 1])) continue;
+    if (p.bb === 'up5' && !(s.bbw[i] > s.bbw[i - 5] * 1.1)) continue;
+    if (i - last < COOLDOWN) continue;
+    out.push(i);
+    last = i;
+  }
+  return out;
+}
 
 function indicatorSignals(s, test) {
   const out = [];
@@ -636,6 +676,22 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     chipFn[p.key] ? chipFn[p.key](s) : indicatorSignals(s, indTest[p.key]),
   );
 
+  // 布林通道＋MACD 三條件（網路流傳的進場法），並拆開看每個條件的貢獻
+  const BB = { none: '', up1: '＋布林開口放大', up5: '＋布林 5 日開口放大 10%' };
+  const bmCombos = [];
+  for (const bb of ['none', 'up1', 'up5'])
+    for (const ma of [false, true])
+      for (const win of [0, 3])
+        for (const exit of ['H3', 'H5', 'H10', 'H20', 'MA20', 'MACDX'])
+          bmCombos.push({
+            id: `BM-${bb}-${ma ? 'ma' : 'x'}-w${win}-${exit}`,
+            label: `MACD 柱狀體轉正${win ? '（3 天內）' : ''}${ma ? '＋站上上彎月線' : ''}${BB[bb]}、${EXITS[exit].name}`,
+            exit,
+            sig: { bb, ma, win },
+          });
+  runFamily('bbmacd', '布林通道＋MACD 三條件', bmCombos, (s, p) => bbMacdSignals(s, p));
+  families.at(-1).featured = ['H3', 'H5', 'H10', 'H20', 'MA20', 'MACDX'].map((x) => `BM-up1-ma-w0-${x}`);
+
   // 三重共振（App 名單條件）：營收、毛利率、投信同時成立且技術面趨勢向上的第一天
   function resonanceSignals(s) {
     const out = [];
@@ -770,6 +826,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     ['ours', '錯殺逆勢：跌深 15%（任何時候）', 'panic', (r) => r.sig.drop === 15 && r.id.endsWith('-any')],
     ['ours', '錯殺逆勢：跌深 15%，只在大盤恐慌時', 'panic', (r) => r.sig.drop === 15 && r.id.endsWith('-mkt')],
     ...[...INDICATORS, ...CHIPS].map(([k, name]) => ['popular', name, 'popular', (r) => r.sig.key === k]),
+    ['popular', '布林開口＋MACD 轉正＋站上上彎月線（三條件）', 'bbmacd', (r) => r.sig.bb === 'up1' && r.sig.ma && r.sig.win === 0],
   ];
   const shortTerm = [];
   for (const [group, name, fam, match] of ideas) {

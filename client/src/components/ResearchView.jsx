@@ -48,8 +48,56 @@ function SplitCells({ s }) {
   );
 }
 
+function RowsTable({ rows }) {
+  return (
+    <div className="table-scroll">
+      <table className="bt-table research-table">
+        <thead>
+          <tr>
+            <th rowSpan={2}>條件</th>
+            <th colSpan={3}>樣本內（前 2/3）</th>
+            <th colSpan={3}>樣本外（後 1/3）</th>
+            <th rowSpan={2}>樣本外勝過隨機</th>
+            <th rowSpan={2}>t 值（按日）</th>
+            <th rowSpan={2}>大盤季線下</th>
+            <th rowSpan={2}>判定</th>
+          </tr>
+          <tr>
+            <th>筆數</th>
+            <th>每筆平均</th>
+            <th>勝率</th>
+            <th>筆數</th>
+            <th>每筆平均</th>
+            <th>勝率</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <th scope="row">{r.label}</th>
+              <SplitCells s={r.is} />
+              <SplitCells s={r.oos} />
+              <td className={`num ${tone(r.oos.excess)}`}>{pct(r.oos.excess)}</td>
+              <td className="num" title={`${r.all.signalDays} 個訊號日、${r.all.episodes} 段獨立行情`}>
+                {fmtNum(r.all.tDay, 1)}
+              </td>
+              <td className={`num ${tone(r.down?.avg)}`} title={`${r.down?.n ?? 0} 筆`}>
+                {pct(r.down?.avg)}
+              </td>
+              <td>
+                <Verdict v={r.verdict} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Family({ f, exits }) {
   const rows = f.top.map((id) => f.rows.find((r) => r.id === id)).filter(Boolean);
+  const featured = (f.featured ?? []).map((id) => f.rows.find((r) => r.id === id)).filter(Boolean);
   const best = rows[0];
   return (
     <section className="card">
@@ -58,45 +106,14 @@ function Family({ f, exits }) {
         測了 {f.tested} 組參數：樣本內外都賺 {f.counts.robust + f.counts.weak} 組（其中統計上可信 {f.counts.robust} 組）、看似有效是假象{' '}
         {f.counts.illusion} 組、前段就不賺 {f.counts.no} 組、樣本不足 {f.counts.few} 組。
       </p>
+      {featured.length > 0 && (
+        <>
+          <h3>原始規則（三個條件同一天成立），各種出場方式</h3>
+          <RowsTable rows={featured} />
+        </>
+      )}
       <h3>樣本內表現最好的 5 組，拿到樣本外驗證</h3>
-      <div className="table-scroll">
-        <table className="bt-table research-table">
-          <thead>
-            <tr>
-              <th rowSpan={2}>條件</th>
-              <th colSpan={3}>樣本內（前 2/3）</th>
-              <th colSpan={3}>樣本外（後 1/3）</th>
-              <th rowSpan={2}>樣本外勝過隨機</th>
-              <th rowSpan={2}>t 值（按日）</th>
-              <th rowSpan={2}>判定</th>
-            </tr>
-            <tr>
-              <th>筆數</th>
-              <th>每筆平均</th>
-              <th>勝率</th>
-              <th>筆數</th>
-              <th>每筆平均</th>
-              <th>勝率</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <th scope="row">{r.label}</th>
-                <SplitCells s={r.is} />
-                <SplitCells s={r.oos} />
-                <td className={`num ${tone(r.oos.excess)}`}>{pct(r.oos.excess)}</td>
-                <td className="num" title={`${r.all.signalDays} 個訊號日、${r.all.episodes} 段獨立行情`}>
-                  {fmtNum(r.all.tDay, 1)}
-                </td>
-                <td>
-                  <Verdict v={r.verdict} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <RowsTable rows={rows} />
       {best && (
         <p className="muted small">
           t 值按訊號日平均後計算（同一天的訊號視為一次），比逐筆計算保守。第一名在大盤季線之上時每筆平均 {pct(best.up?.avg)}（{best.up?.n ?? 0} 筆），季線之下時 {pct(best.down?.avg)}（{best.down?.n ?? 0}{' '}
