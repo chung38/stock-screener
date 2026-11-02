@@ -2028,3 +2028,71 @@ button.link {
   color: var(--warn);
   background: var(--caution-soft);
 }
+
+/* 策略績效：只列賺錢的策略 */
+.win-criteria,
+.win-rules {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
+}
+.win-card h3 {
+  margin: 4px 0 6px;
+  font-size: 15px;
+}
+.win-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.win-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+.win-row h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.win-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 0 0 10px;
+}
+.win-stats dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.win-stats dd {
+  margin: 0;
+}
+.win-stats small {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-left: 2px;
+}
+.win-warn,
+.win-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+}
+.win-warn {
+  color: var(--warn);
+  background: var(--caution-soft);
+}
+.win-note {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.eq-curve polyline,
+.eq-curve line {
+  vector-effect: non-scaling-stroke;
+}

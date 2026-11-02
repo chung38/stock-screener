@@ -879,6 +879,50 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     if (best) equity.push({ family: f.id, id: best.id, ...portfolio(best._trades, A) });
   }
 
+  // ---- 真的能賺錢的策略 ----
+  // 條件：統計上可信（robust：前後兩段都賺、都勝過隨機、t ≥ 2）、前後兩段每筆平均都 ≥ 1%（成本或滑價多一點也不會變虧）、
+  // 照訊號操作的帳戶（最多 10 檔）年化報酬 > 0。同一類只留參數不同的前 2 組，避免同一個策略換個數字重複出現
+  onProgress('篩選賺錢策略');
+  const DEDUPE = {
+    breakout: (r) => `${r.sig.lb}-${r.exit}`,
+    panic: (r) => r.exit,
+    resonance: (r) => r.exit,
+    bbmacd: (r) => r.exit,
+    pullback: (r) => r.exit,
+    popular: (r) => r.sig.key,
+  };
+  const winners = [];
+  const alsoPass = {}; // 也通過、但同類已經列了 2 組而沒有展開的參數
+  for (const f of families) {
+    const cands = f.rows
+      .filter((r) => r.verdict === 'robust' && r.is.avg >= 1 && r.oos.avg >= 1)
+      .sort((a, b) => b.all.avg - a.all.avg);
+    const seen = new Set();
+    let k = 0;
+    for (const r of cands) {
+      const key = (DEDUPE[f.id] ?? ((x) => x.id))(r);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (k >= 2) {
+        (alsoPass[f.id] ??= []).push({ label: r.label, is: r.is.avg, oos: r.oos.avg, n: r.all.n });
+        continue;
+      }
+      const pf = multiPortfolio(r._trades);
+      if (!(pf.cagr > 0)) continue;
+      const { id, label, exit, sig, is, oos, all, up, down } = r;
+      winners.push({ family: f.id, familyName: f.name, id, label, exit, sig, is, oos, all, up, down, portfolio: pf });
+      k++;
+    }
+  }
+  winners.sort((a, b) => b.all.avg - a.all.avg);
+  const screened = {
+    tested: families.reduce((a, f) => a + f.rows.length, 0),
+    robust: families.reduce((a, f) => a + f.counts.robust, 0),
+    winners: winners.length,
+    without: families.filter((f) => !winners.some((w) => w.family === f.id)).map((f) => f.name),
+    alsoPass,
+  };
+
   for (const f of families) for (const r of f.rows) delete r._trades;
 
   return {
@@ -902,6 +946,8 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     randomPortfolio,
     buyHold,
     global: hasGlobal ? globalResearch(A, codes) : null,
+    winners,
+    screened,
     ms: Date.now() - t0,
   };
 }

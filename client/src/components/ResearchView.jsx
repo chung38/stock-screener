@@ -2,26 +2,11 @@ import { useEffect, useState } from 'react';
 import { getResearch } from '../api.js';
 import { fmtNum, fmtPct, fmtDate, tone } from '../format.js';
 
-const VERDICT = {
-  robust: { text: '樣本內外都賺', cls: 'v-robust', tip: '前 2/3 與後 1/3 期間都賺錢、都勝過隨機進場，而且按訊號日計算的 t 值 ≥ 2' },
-  weak: { text: '都賺但證據弱', cls: 'v-weak', tip: '兩段都賺錢也勝過隨機，但差距可能只是運氣（t < 2）' },
-  illusion: { text: '看似有效是假象', cls: 'v-illusion', tip: '前段賺錢，後段沒賺或輸給隨機進場' },
-  no: { text: '前段就不賺', cls: 'v-no', tip: '樣本內扣成本後就是虧損' },
-  few: { text: '樣本不足', cls: 'v-few', tip: '前段少於 30 筆或後段少於 15 筆，不下結論' },
-};
+// 「策略績效」只列出用 2 年資料驗證後真的能賺錢的策略（篩選在 server/research/lab.js 的 winners）
 
 const pct = (x, d = 2) => fmtPct(x, d);
 
-function Verdict({ v }) {
-  const x = VERDICT[v] ?? VERDICT.few;
-  return (
-    <span className={`verdict-badge ${x.cls}`} title={x.tip}>
-      {x.text}
-    </span>
-  );
-}
-
-function Curve({ curve, width = 260, height = 56 }) {
+function Curve({ curve, width = 300, height = 64 }) {
   if (!curve?.length) return null;
   const ys = curve.map((p) => p[1]);
   const min = Math.min(...ys, 1);
@@ -30,198 +15,119 @@ function Curve({ curve, width = 260, height = 56 }) {
   const y = (v) => height - 4 - ((v - min) / span) * (height - 8);
   const pts = ys.map((v, i) => `${(i / Math.max(1, ys.length - 1)) * width},${y(v)}`).join(' ');
   return (
-    <svg width={width} height={height} className="eq-curve" role="img" aria-label="資金曲線">
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none" className="eq-curve" role="img" aria-label="資金曲線">
       <line x1="0" x2={width} y1={y(1)} y2={y(1)} className="eq-base" />
       <polyline points={pts} className={ys.at(-1) >= 1 ? 'up' : 'down'} />
     </svg>
   );
 }
 
-function SplitCells({ s }) {
-  if (!s?.n) return <td colSpan={3} className="muted">—</td>;
-  return (
-    <>
-      <td className="num">{s.n}</td>
-      <td className={`num ${tone(s.avg)}`}>{pct(s.avg)}</td>
-      <td className="num">{fmtNum(s.win, 0)}%</td>
-    </>
-  );
-}
+// 每一類策略的白話名稱、規則、在 App 哪裡找訊號
+const FAMILY = {
+  resonance: {
+    title: '三重共振名單',
+    rules: () => [
+      '近 3 個已公布月份的營收年增率每個月都 > 20%',
+      '單季毛利率連續 2 季改善（季報法定公布日之後才算）',
+      '投信近 5 個交易日合計買超',
+      '股價站上月線、月線上彎、週線上彎（條件同時成立的第一天）',
+      '當天收盤確認，隔天開盤買進',
+    ],
+    where: '「共振名單」頁勾選「只看三者皆過」。App 名單另外要求千張大戶增加，這個條件資料只有幾週，回測沒有包含。',
+  },
+  breakout: {
+    title: '突破長期前高',
+    rules: (s) =>
+      [
+        `收盤突破前 ${s.lb} 個交易日的最高價（前一天還沒突破）`,
+        s.vm ? `突破當天成交量 ≥ 前 20 日均量的 ${s.vm} 倍` : null,
+        s.hd ? `之後連續 ${s.hd} 天收盤都沒有跌回前高（站穩）` : null,
+        '站穩那天收盤確認，隔天開盤買進',
+      ].filter(Boolean),
+    where: (s) => `「突破策略」頁，前高選 ${s.lb} 日、量比 ${s.vm ? `${s.vm} 倍` : '不限'}、站穩 ${s.hd} 天，列出的「站穩」股票。`,
+  },
+  panic: {
+    title: '大盤恐慌時買錯殺股',
+    rules: (s) => [
+      '大盤恐慌：加權指數單日跌 3%、近 5 日跌 6%，或距 20 日高點跌 10% 以上',
+      `個股距 20 日高點跌 ${s.drop}% 以上，且月線乖離 −8% 以下或 RSI(6) 20 以下`,
+      '當天收盤確認，隔天開盤買進',
+    ],
+    where: (s) => `「錯殺逆勢」頁，只在頂端顯示「大盤恐慌」時才進場；左側「距 20 日高點跌」可改成 ${s.drop}%。App 名單另外要求營收仍強，回測中加上這個條件結果更好。`,
+  },
+};
 
-function RowsTable({ rows }) {
+function WinnerRow({ w, exits }) {
+  const p = w.portfolio;
+  const m = p.market ?? {};
   return (
-    <div className="table-scroll">
-      <table className="bt-table research-table">
-        <thead>
-          <tr>
-            <th rowSpan={2}>條件</th>
-            <th colSpan={3}>樣本內（前 2/3）</th>
-            <th colSpan={3}>樣本外（後 1/3）</th>
-            <th rowSpan={2}>樣本外勝過隨機</th>
-            <th rowSpan={2}>t 值（按日）</th>
-            <th rowSpan={2}>大盤季線下</th>
-            <th rowSpan={2}>判定</th>
-          </tr>
-          <tr>
-            <th>筆數</th>
-            <th>每筆平均</th>
-            <th>勝率</th>
-            <th>筆數</th>
-            <th>每筆平均</th>
-            <th>勝率</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <th scope="row">{r.label}</th>
-              <SplitCells s={r.is} />
-              <SplitCells s={r.oos} />
-              <td className={`num ${tone(r.oos.excess)}`}>{pct(r.oos.excess)}</td>
-              <td className="num" title={`${r.all.signalDays} 個訊號日、${r.all.episodes} 段獨立行情`}>
-                {fmtNum(r.all.tDay, 1)}
-              </td>
-              <td className={`num ${tone(r.down?.avg)}`} title={`${r.down?.n ?? 0} 筆`}>
-                {pct(r.down?.avg)}
-              </td>
-              <td>
-                <Verdict v={r.verdict} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Family({ f, exits }) {
-  const rows = f.top.map((id) => f.rows.find((r) => r.id === id)).filter(Boolean);
-  const featured = (f.featured ?? []).map((id) => f.rows.find((r) => r.id === id)).filter(Boolean);
-  const best = rows[0];
-  return (
-    <section className="card">
-      <h2>{f.name}</h2>
-      <p className="muted small">
-        測了 {f.tested} 組參數：樣本內外都賺 {f.counts.robust + f.counts.weak} 組（其中統計上可信 {f.counts.robust} 組）、看似有效是假象{' '}
-        {f.counts.illusion} 組、前段就不賺 {f.counts.no} 組、樣本不足 {f.counts.few} 組。
-      </p>
-      {featured.length > 0 && (
-        <>
-          <h3>原始規則（三個條件同一天成立），各種出場方式</h3>
-          <RowsTable rows={featured} />
-        </>
-      )}
-      <h3>樣本內表現最好的 5 組，拿到樣本外驗證</h3>
-      <RowsTable rows={rows} />
-      {best && (
-        <p className="muted small">
-          t 值按訊號日平均後計算（同一天的訊號視為一次），比逐筆計算保守。第一名在大盤季線之上時每筆平均 {pct(best.up?.avg)}（{best.up?.n ?? 0} 筆），季線之下時 {pct(best.down?.avg)}（{best.down?.n ?? 0}{' '}
-          筆）。出場方式：{exits[best.exit]}。
-        </p>
-      )}
-    </section>
-  );
-}
-
-const HOLD = { H1: '當沖', H3: '3 天', H5: '5 天', H10: '10 天' };
-
-function ShortTerm({ r }) {
-  const list = r.shortTerm ?? [];
-  if (!list.length) return null;
-  const rp = r.randomPortfolio ?? {};
-  const bh = r.buyHold ?? {};
-  const beatRandom = (x) => x.portfolio.cagr != null && rp[x.exit]?.cagr != null && x.portfolio.cagr > rp[x.exit].cagr;
-  return (
-    <section className="card">
-      <h2>短線持有：我們的策略 vs 坊間常用指標</h2>
-      <p className="muted small">
-        每個方法都試了當沖、持有 3／5／10 天，用前 2/3 期間挑出最好的持有天數，再看後 1/3 期間。「資金曲線」是訊號照做、最多同時 10 檔、每檔 1/10
-        資金的帳戶結果（已扣成本）。同一天訊號太多買不完時，挑哪幾檔會影響結果，所以換 20 種挑法，取中位數，括號內是 10%～90% 的範圍。依年化中位數排序。
-      </p>
-      <dl className="bench">
+    <div className="win-row">
+      <h3>{exits[w.exit] ?? w.exit}</h3>
+      <dl className="win-stats">
         <div>
-          <dt>什麼都不做，買大盤放著</dt>
+          <dt>每筆平均（扣成本）</dt>
           <dd>
-            加權指數年化 <b className={`num ${tone(bh.taiex)}`}>{pct(bh.taiex, 1)}</b>，等權平均年化{' '}
-            <b className={`num ${tone(bh.equalWeight)}`}>{pct(bh.equalWeight, 1)}</b>
+            <b className={`num ${tone(w.is.avg)}`}>{pct(w.is.avg)}</b> 前段 ／ <b className={`num ${tone(w.oos.avg)}`}>{pct(w.oos.avg)}</b> 後段
           </dd>
         </div>
         <div>
-          <dt>每天隨機亂買（同樣最多 10 檔，年化中位數）</dt>
-          <dd className="rp-list">
-            {['H1', 'H3', 'H5', 'H10'].map((k) => (
-              <span key={k} className="rp-item">
-                {HOLD[k]} <b className={`num ${tone(rp[k]?.cagr)}`}>{pct(rp[k]?.cagr, 1)}</b>
-              </span>
-            ))}
+          <dt>勝率</dt>
+          <dd className="num">
+            {fmtNum(w.is.win, 0)}% ／ {fmtNum(w.oos.win, 0)}%
+          </dd>
+        </div>
+        <div>
+          <dt>比隨機買多賺（後段每筆）</dt>
+          <dd className={`num ${tone(w.oos.excess)}`}>{pct(w.oos.excess)}</dd>
+        </div>
+        <div>
+          <dt>交易次數</dt>
+          <dd className="num">
+            {w.all.n} 筆（{w.all.signalDays} 個訊號日）
+          </dd>
+        </div>
+        <div>
+          <dt>大盤在季線上／下</dt>
+          <dd>
+            <b className={`num ${tone(w.up?.avg)}`}>{pct(w.up?.avg)}</b> ／ <b className={`num ${tone(w.down?.avg)}`}>{pct(w.down?.avg)}</b>
+            <small>（{w.down?.n ?? 0} 筆在季線下）</small>
+          </dd>
+        </div>
+        <div>
+          <dt>帳戶年化（最多 10 檔）</dt>
+          <dd>
+            <b className={`num ${tone(p.cagr)}`}>{pct(p.cagr, 1)}</b>
+            <small>
+              （{fmtNum(p.p10, 0)}～{fmtNum(p.p90, 0)}%）
+            </small>
+          </dd>
+        </div>
+        <div>
+          <dt>最大回撤</dt>
+          <dd className="num down">{pct(p.mdd, 1)}</dd>
+        </div>
+        <div>
+          <dt>同期大盤年化</dt>
+          <dd className="num">
+            加權 {pct(m.taiex, 0)}／等權 {pct(m.equalWeight, 0)}
           </dd>
         </div>
       </dl>
-      <div className="table-scroll">
-        <table className="bt-table research-table short-table">
-          <thead>
-            <tr>
-              <th rowSpan={2}>方法</th>
-              <th rowSpan={2}>持有</th>
-              <th colSpan={2}>每筆平均（扣成本）</th>
-              <th rowSpan={2}>樣本外勝過隨機</th>
-              <th colSpan={2}>大盤季線</th>
-              <th colSpan={4}>資金曲線</th>
-              <th rowSpan={2}>判定</th>
-            </tr>
-            <tr>
-              <th>樣本內</th>
-              <th>樣本外</th>
-              <th>之上</th>
-              <th>之下</th>
-              <th>年化</th>
-              <th>同期大盤</th>
-              <th>最大回撤</th>
-              <th>勝過亂買</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((x) => (
-              <tr key={x.id} className={x.group === 'ours' ? 'ours' : ''}>
-                <th scope="row">
-                  <span className={`grp grp-${x.group}`}>{x.group === 'ours' ? '本程式' : '坊間'}</span>
-                  {x.name}
-                </th>
-                <td>{HOLD[x.exit] ?? x.exit}</td>
-                <td className={`num ${tone(x.is.avg)}`}>{pct(x.is.avg)}</td>
-                <td className={`num ${tone(x.oos.avg)}`}>{pct(x.oos.avg)}</td>
-                <td className={`num ${tone(x.oos.excess)}`}>{pct(x.oos.excess)}</td>
-                <td className={`num ${tone(x.up?.avg)}`}>{pct(x.up?.avg)}</td>
-                <td className={`num ${tone(x.down?.avg)}`} title={`${x.down?.n ?? 0} 筆`}>
-                  {pct(x.down?.avg)}
-                </td>
-                <td className={`num ${tone(x.portfolio.cagr)}`}>
-                  {pct(x.portfolio.cagr, 1)}
-                  {x.portfolio.p10 != null && (
-                    <span className="range">
-                      （{fmtNum(x.portfolio.p10, 0)}～{fmtNum(x.portfolio.p90, 0)}）
-                    </span>
-                  )}
-                </td>
-                <td className="num" title={`從 ${fmtDate(x.portfolio.market?.from)} 起算：加權指數／等權平均`}>
-                  {pct(x.portfolio.market?.taiex, 0)}／{pct(x.portfolio.market?.equalWeight, 0)}
-                </td>
-                <td className="num down">{pct(x.portfolio.mdd, 1)}</td>
-                <td>{beatRandom(x) ? '是' : '否'}</td>
-                <td>
-                  <Verdict v={x.verdict} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Curve curve={p.curve} />
       <p className="muted small">
-        「同期大盤」是從該方法第一筆交易那天開始買進持有，加權指數／等權平均的年化報酬。「每筆平均」把當沖的證交稅減半（0.15%）算進去；其他持有天數每筆扣{' '}
-        {fmtNum(r.costPct, 3)}%。持有天數越短、換手越頻繁，成本吃掉的越多。
+        資金曲線從 {fmtDate(m.from)} 第一筆交易開始，持股時間 {fmtNum(p.exposure, 0)}%。
       </p>
-    </section>
+      {w.down?.avg < 0 && (
+        <p className="win-warn">
+          大盤在季線之下時，每筆平均 {pct(w.down.avg)}（{w.down.n} 筆）。大盤跌破季線時不要用這個策略。
+        </p>
+      )}
+      {p.exposure < 50 && (
+        <p className="win-note">
+          只有在特定時機才有訊號，資金大部分時間閒置，所以帳戶年化不高；每一筆的報酬才是重點，閒置時資金可以放在其他地方。
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -236,155 +142,86 @@ export default function ResearchView() {
 
   if (err) return <div className="error">{err}</div>;
   if (r === undefined) return <div className="loading">讀取中…</div>;
-  if (r === null) return <div className="empty">還沒有策略研究結果，下一次 GitHub 自動更新後就會出現。</div>;
+  if (r === null || !r.winners) return <div className="empty">還沒有策略研究結果，下一次 GitHub 自動更新後就會出現。</div>;
 
-  const all = r.families.flatMap((f) => f.rows.map((x) => ({ ...x, family: f.name })));
-  const robust = all.filter((x) => x.verdict === 'robust').sort((a, b) => b.all.avg - a.all.avg);
-  const weak = all.filter((x) => x.verdict === 'weak').sort((a, b) => b.all.avg - a.all.avg);
-  const famBest = Object.fromEntries(r.equity.map((e) => [e.family, e]));
+  // 依策略類別分組，帳戶年化最好的類別排前面
+  const groups = [];
+  for (const w of [...r.winners].sort((a, b) => b.portfolio.cagr - a.portfolio.cagr)) {
+    let g = groups.find((x) => x.family === w.family);
+    if (!g) groups.push((g = { family: w.family, list: [] }));
+    g.list.push(w);
+  }
+  const sc = r.screened ?? {};
 
   return (
     <div className="breakout-view research-view">
       <section className="card">
-        <h2>哪些策略真的能賺錢？</h2>
+        <h2>真的能賺錢的策略</h2>
         <p className="muted small">
-          {fmtDate(r.from)} 到 {fmtDate(r.to)}（{r.days} 個交易日、{r.stocks} 檔股票）。用前 2/3（到 {fmtDate(r.split)}）挑參數，後 1/3
-          當作沒看過的資料驗證。訊號出現後隔天開盤進場，每筆扣來回成本 {fmtNum(r.costPct, 3)}%
-          {r.dividendAdjusted ? `，股價已還原權息（比對到 ${r.dividendAdjusted.matched} 次除權息）` : '，股價未還原權息'}。
+          用 {fmtDate(r.from)} 到 {fmtDate(r.to)}（{r.days} 個交易日、{r.stocks} 檔上市櫃股票）的資料回測。訊號在收盤後確認、隔天開盤買進，每筆扣來回成本{' '}
+          {fmtNum(r.costPct, 3)}%，股價已還原權息，月營收與季報依公布日之後才使用。
         </p>
+        <p>
+          一共測了 <b>{sc.tested}</b> 組策略參數，只有 <b>{groups.length}</b> 類策略通過下面三關（每類列出最好的參數）：
+        </p>
+        <ol className="win-criteria">
+          <li>前 2/3 期間挑出來、後 1/3 期間（沒看過的資料）也賺錢，而且兩段都比隨機挑股票、持有同樣天數多賺，統計上不是運氣。</li>
+          <li>前後兩段每筆平均都賺 1% 以上，成本或滑價多一點也不會變成虧損。</li>
+          <li>照訊號實際操作（最多同時 10 檔、每檔 1/10 資金）的帳戶是賺錢的。</li>
+        </ol>
         <dl className="bench">
           <div>
             <dt>大盤（加權指數）同期</dt>
             <dd>
-              全期 <b className={`num ${tone(r.benchmark.all)}`}>{pct(r.benchmark.all, 1)}</b>，前段{' '}
-              <b className={`num ${tone(r.benchmark.is)}`}>{pct(r.benchmark.is, 1)}</b>，後段{' '}
-              <b className={`num ${tone(r.benchmark.oos)}`}>{pct(r.benchmark.oos, 1)}</b>
+              全期 <b className={`num ${tone(r.benchmark.all)}`}>{pct(r.benchmark.all, 1)}</b>，年化{' '}
+              <b className={`num ${tone(r.buyHold?.taiex)}`}>{pct(r.buyHold?.taiex, 1)}</b>
             </dd>
           </div>
-          {r.equalWeight && (
-            <div>
-              <dt>等權平均（一般股票）</dt>
-              <dd>
-                全期 <b className={`num ${tone(r.equalWeight.all)}`}>{pct(r.equalWeight.all, 1)}</b>，前段{' '}
-                <b className={`num ${tone(r.equalWeight.is)}`}>{pct(r.equalWeight.is, 1)}</b>，後段{' '}
-                <b className={`num ${tone(r.equalWeight.oos)}`}>{pct(r.equalWeight.oos, 1)}</b>
-              </dd>
-            </div>
-          )}
           <div>
-            <dt>隨機進場、持有 10 天</dt>
+            <dt>等權平均（一般股票）</dt>
             <dd>
-              每筆平均 前段 <b className={`num ${tone(r.baselines.H10.is.avg)}`}>{pct(r.baselines.H10.is.avg)}</b>，後段{' '}
-              <b className={`num ${tone(r.baselines.H10.oos.avg)}`}>{pct(r.baselines.H10.oos.avg)}</b>
+              全期 <b className={`num ${tone(r.equalWeight?.all)}`}>{pct(r.equalWeight?.all, 1)}</b>，年化{' '}
+              <b className={`num ${tone(r.buyHold?.equalWeight)}`}>{pct(r.buyHold?.equalWeight, 1)}</b>
             </dd>
           </div>
         </dl>
-        <h3>樣本內外都賺錢、統計上可信</h3>
-        {robust.length ? (
-          <ul className="pass-list">
-            {robust.slice(0, 8).map((x) => (
-              <li key={x.id}>
-                <b>{x.label}</b>
-                <span>
-                  {x.family}｜全期 {x.all.n} 筆、每筆平均 <em className={tone(x.all.avg)}>{pct(x.all.avg)}</em>、勝率 {fmtNum(x.all.win, 0)}%、樣本外{' '}
-                  <em className={tone(x.oos.avg)}>{pct(x.oos.avg)}</em>；大盤季線上 {pct(x.up?.avg)}、季線下 {pct(x.down?.avg)}（{x.down?.n ?? 0} 筆）
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>沒有。測過的策略在扣成本後，沒有一組能同時通過前後兩段驗證且統計上可信。</p>
-        )}
-        {weak.length > 0 && (
-          <>
-            <h3>兩段都賺，但證據還不夠強</h3>
-            <ul className="pass-list weak">
-              {weak.slice(0, 6).map((x) => (
-                <li key={x.id}>
-                  <b>{x.label}</b>
-                  <span>
-                    {x.family}｜全期 {x.all.n} 筆、每筆平均 {pct(x.all.avg)}、t 值 {fmtNum(x.all.t, 1)}
-                  </span>
-                </li>
+      </section>
+
+      {groups.map((g) => {
+        const F = FAMILY[g.family];
+        const s = g.list[0].sig ?? {};
+        const rules = F ? F.rules(s) : [g.list[0].label];
+        const where = F ? (typeof F.where === 'function' ? F.where(s) : F.where) : '';
+        return (
+          <section key={g.family} className="card win-card">
+            <h2>{F?.title ?? g.list[0].familyName}</h2>
+            <h3>進場規則</h3>
+            <ol className="win-rules">
+              {rules.map((x) => (
+                <li key={x}>{x}</li>
               ))}
-            </ul>
-          </>
-        )}
-      </section>
-
-      <ShortTerm r={r} />
-
-      {r.families.map((f) => (
-        <Family key={f.id} f={f} exits={r.exits} />
-      ))}
-
-      <section className="card">
-        <h2>加上基本面、籌碼濾網有沒有幫助</h2>
-        <p className="muted small">
-          用各類第一名的條件，再要求訊號當天已公布的月營收、季報、投信資料符合濾網。月營收從 {r.coverage.revFrom}、季報從{' '}
-          {r.coverage.gmFrom} 開始，法人資料 {r.coverage.instDays} 天。千張大戶只有幾週資料，無法回測。
-        </p>
-        {r.filterTables.map((t) => (
-          <div key={t.family} className="filter-block">
-            <h4>{t.baseLabel}</h4>
-            <div className="table-scroll">
-              <table className="bt-table research-table">
-                <thead>
-                  <tr>
-                    <th rowSpan={2}>濾網</th>
-                    <th colSpan={3}>樣本內</th>
-                    <th colSpan={3}>樣本外</th>
-                  </tr>
-                  <tr>
-                    <th>筆數</th>
-                    <th>每筆平均</th>
-                    <th>勝率</th>
-                    <th>筆數</th>
-                    <th>每筆平均</th>
-                    <th>勝率</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {t.rows.map((x) => (
-                    <tr key={x.id}>
-                      <th scope="row">{x.label}</th>
-                      <SplitCells s={x.is} />
-                      <SplitCells s={x.oos} />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            </ol>
+            {where && <p className="muted small">在 App 哪裡看：{where}</p>}
+            <div className="win-grid">
+              {g.list.map((w) => (
+                <WinnerRow key={w.id} w={w} exits={r.exits} />
+              ))}
             </div>
-          </div>
-        ))}
-      </section>
-
-      <section className="card">
-        <h2>實際操作的資金曲線</h2>
-        <p className="muted small">
-          各類第一名的訊號全部照做，最多同時持有 10 檔、每檔投入當時資金的 1/10，已扣成本。這比「每筆平均報酬」更接近真實帳戶的結果。
-        </p>
-        <div className="eq-grid">
-          {r.families.map((f) => {
-            const e = famBest[f.id];
-            if (!e) return null;
-            return (
-              <div key={f.id} className="eq-item">
-                <h4>{f.name}</h4>
-                <Curve curve={e.curve} />
-                <p className="small">
-                  總報酬 <b className={`num ${tone(e.total)}`}>{pct(e.total, 1)}</b>，年化 <b className={`num ${tone(e.cagr)}`}>{pct(e.cagr, 1)}</b>
-                  ，最大回撤 <b className="num down">{pct(e.mdd, 1)}</b>，{e.taken} 筆、持股時間 {fmtNum(e.exposure, 0)}%
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+            {sc.alsoPass?.[g.family]?.length > 0 && (
+              <p className="muted small">
+                其他也通過的參數（結果較差）：
+                {sc.alsoPass[g.family]
+                  .map((x) => `${x.label}（每筆 ${pct(x.is)}／${pct(x.oos)}）`)
+                  .join('；')}
+              </p>
+            )}
+          </section>
+        );
+      })}
 
       <p className="footnote">
-        判定方式：先只看前 2/3 期間挑出最好的參數，再看它在後 1/3 期間是否仍然賺錢、而且比隨機挑股票同樣持有更好。只在前段好看的，多半是剛好配合到那段行情。
-        測的組合越多，越容易「碰巧」挑到好看的結果，所以「都賺但證據弱」的組合不建議直接採用。過去的結果不代表未來，也不構成投資建議。
+        沒有通過的已不列出，包括：{(sc.without ?? []).join('、')}，以及突破 20 日前高、KD、MACD、RSI、布林通道、均線交叉、爆量長紅、追漲停、跳空、外資／投信連買等。
+        這 2 年大盤大多在上漲（加權指數 {pct(r.benchmark.all, 0)}），順勢策略在空頭市場不一定有效；千張大戶資料不足沒有回測。過去的結果不代表未來，也不構成投資建議。
       </p>
     </div>
   );
