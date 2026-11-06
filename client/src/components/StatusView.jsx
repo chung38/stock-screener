@@ -34,8 +34,8 @@ export default function StatusView({ status, coverage, onUpdate }) {
           <h2>資料更新</h2>
           <p>上次更新：{when(status?.updated?.lastRun)}</p>
           <p className="muted small">
-            GitHub 會在每個交易日 18:40 抓當天資料、早上 07:20 更新國際行情、週六 10:30 抓集保。GitHub 的排程常會延遲，有時晚好幾個小時，
-            所以另外排了備援時間（晚上 20:40、23:10，早上 08:10），已經更新過就會自動跳過。
+            GitHub 每個交易日會自動抓當天資料、早上更新國際行情、週六抓集保。GitHub 的排程最近常晚 4～7 小時，所以從下午 2 點起排了好幾次，
+            誰先跑到資料齊了就算數，其他次會自動跳過。想立刻更新，到 GitHub Actions 按 Run workflow。
             想立刻更新，到 GitHub 的 Actions 分頁，選「每日更新」按 Run workflow。
           </p>
           {REPO && (
