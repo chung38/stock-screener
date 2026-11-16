@@ -132,7 +132,7 @@ export default function App() {
         <MarketBar market={data?.market} global={data?.global} asOf={data?.asOf} onGlobal={() => setTab('global')} />
         <div className="top-actions">
           {STATIC ? (
-            <span className="mk-date">每個交易日 18:40 自動更新</span>
+            <span className="mk-date">每個交易日 15:05、17:10 自動更新</span>
           ) : running ? (
             <button type="button" className="ghost running" onClick={() => setTab('status')}>
               更新中 {status.job.total ? `${status.job.done}/${status.job.total}` : ''}

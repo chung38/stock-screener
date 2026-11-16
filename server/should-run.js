@@ -27,7 +27,7 @@ if (mode === 'daily') {
   // 今天收盤後已經完整更新過（行情、法人都有，沒有缺上櫃）
   const p = read(`data/prices/${today}.json`);
   const inst = read(`data/inst/${today}.json`);
-  const done = p && !p.partial?.length && inst && !inst._partial?.length && lastRun >= `${todayIso}T18:00`;
+  const done = p && !p.partial?.length && inst && !inst._partial?.length && lastRun >= `${todayIso}T17:00`;
   if (done) [run, why] = [false, '今天的資料已經更新過'];
 } else if (mode === 'global') {
   // 今天早上 6 點（美股收盤）之後已經抓過國際行情

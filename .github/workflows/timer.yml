@@ -1,0 +1,40 @@
+name: 收盤後準時更新
+
+# GitHub 的排程常晚 4～9 小時，直接排 15:00 會拖到半夜才跑。
+# 所以這個工作每 2 小時排一次「提早」啟動，在雲端等到指定的台北時間，
+# 再觸發「每日更新」（手動觸發不會延遲）：
+#   05:40 國際行情（美股收盤後）、15:05 收盤行情、17:10 法人與完整資料
+# 已經更新過、或離指定時間太遠，就幾秒內結束；同一時間只會有一個在等。
+on:
+  schedule:
+    - cron: '10 16,18,20,22 * * 0-4'
+    - cron: '10 0,2,4,6,8 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      test:
+        description: '測試：馬上觸發一次「只更新國際行情」'
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: timer
+  cancel-in-progress: false
+
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: 等到指定時間，觸發每日更新
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_TEST: ${{ inputs.test && '1' || '' }}
+        run: node server/timer.js
