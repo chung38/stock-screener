@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 330
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}
     steps:
       # 一律取最新的 main（排隊中的 run 才不會拿到舊資料）
       - uses: actions/checkout@v4
@@ -132,6 +132,25 @@ jobs:
         with:
           path: dist
 
+      # GitHub Pages 偶爾在檔案剛上傳完時找不到（No artifacts named github-pages），等一下再試
       - id: deploy
         if: steps.need.outputs.run == 'true'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: 部署失敗，等 30 秒再試
+        if: steps.need.outputs.run == 'true' && steps.deploy.outcome == 'failure'
+        run: sleep 30
+
+      - id: deploy2
+        if: steps.need.outputs.run == 'true' && steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: 再失敗就等 2 分鐘試最後一次
+        if: steps.need.outputs.run == 'true' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 120
+
+      - id: deploy3
+        if: steps.need.outputs.run == 'true' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v4

@@ -62,15 +62,17 @@ function status() {
   return {
     global: globalRun >= `${d}T05:00` || lastRun >= `${d}T05:00`,
     prices,
-    daily: prices && !!inst && !inst._partial?.length && lastRun >= `${d}T17:00`,
+    daily: prices && !!inst && !inst._partial?.length && lastRun >= `${d}T16:30`,
   };
 }
 
-// 台北時間：美股收盤後抓國際行情；收盤行情約 14:30、法人約 16:00 公布（程式分別在 15:00、17:00 後才抓當天）
+// 台北時間：美股收盤後抓國際行情；收盤行情約 14:30、法人約 16:30 前公布（程式分別在 14:30、16:30 後才抓當天）
+// 17:40 再補一次：上櫃法人偶爾比較晚，16:40 沒抓齊就在這時補
 const STEPS = [
   { key: 'global', name: '國際行情', at: '05:40', until: '12:00', args: ['-f', 'global_only=true'] },
-  { key: 'prices', name: '收盤行情', at: '15:05', until: '17:10', args: [] },
-  { key: 'daily', name: '法人與完整資料', at: '17:10', until: '23:59', args: [] },
+  { key: 'prices', name: '收盤行情', at: '14:40', until: '16:40', args: [] },
+  { key: 'daily', name: '法人與完整資料', at: '16:40', until: '17:40', args: [] },
+  { key: 'daily', name: '法人補抓', at: '17:40', until: '23:59', args: [] },
 ];
 
 function dispatch(step) {
@@ -99,7 +101,11 @@ for (const step of STEPS) {
   }
   const wait = t - now();
   if (t > deadline) {
-    log(`${step.name}要等到 ${step.at}，超過這次工作的時間上限，交給之後的排程`);
+    // GitHub 的排程常延遲，等不到下一次；直接再觸發一個自己接手（同一時間只會有一個在跑）
+    log(`${step.name}要等到 ${step.at}，超過這次工作的時間上限，改由新的一輪接手`);
+    if (!DRY && t - now() < 12 * 3600e3) {
+      execFileSync('gh', ['workflow', 'run', 'timer.yml', '--repo', REPO, '--ref', 'main'], { stdio: 'inherit' });
+    }
     break;
   }
   if (wait > 0) {

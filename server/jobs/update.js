@@ -75,10 +75,11 @@ async function mergeIndustry(byYm) {
 }
 
 // 今天的盤後資料大約 14:30（行情）、16:00（法人）才公布
+// minHour 可以有小數：14.5＝14:30
 function readyFor(date, minHour) {
   const now = nowTPE();
   if (date < now.ymd) return true;
-  return now.hour >= minHour;
+  return now.hour + now.minute / 60 >= minHour;
 }
 
 // ---------- 股價 ----------
@@ -91,7 +92,7 @@ async function updatePrices(dates) {
     if (meta.holidays.includes(d)) continue;
     const f = await readJSON(`prices/${d}.json`, null);
     if (f && !f.partial?.length) continue;
-    if (!readyFor(d, 15)) continue;
+    if (!readyFor(d, 14.5)) continue; // 收盤行情約 14:00～14:30 公布
     todo.push(d);
   }
   stage('股價（上市＋上櫃）', todo.length);
@@ -153,7 +154,7 @@ async function updateInst(dates) {
     if (!(await exists(`prices/${d}.json`))) continue; // 只抓有行情的交易日
     const f = await readJSON(`inst/${d}.json`, null);
     if (f && !f._partial?.length) continue;
-    if (!readyFor(d, 17)) continue;
+    if (!readyFor(d, 16.5)) continue; // 三大法人約 15:00～16:30 公布
     todo.push(d);
   }
   stage('投信／外資買賣超', todo.length);
