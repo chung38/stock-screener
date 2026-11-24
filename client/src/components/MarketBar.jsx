@@ -12,7 +12,9 @@ function tpeNow() {
   return { ymd: `${p.year}${p.month}${p.day}`, hour: Number(p.hour) % 24, weekend: p.weekday === 'Sat' || p.weekday === 'Sun' };
 }
 
-export default function MarketBar({ market, global, asOf, onGlobal }) {
+const BR_CLS = { strong: 'calm', healthy: 'calm', neutral: 'calm', weak: 'caution', critical: 'panic' };
+
+export default function MarketBar({ market, global, breadth, asOf, onGlobal }) {
   const now = tpeNow();
   // 平日晚上 7 點後資料日還不是今天：休市，或 GitHub 排程延遲
   const stale = asOf && asOf < now.ymd && !now.weekend && now.hour >= 19;
@@ -40,6 +42,16 @@ export default function MarketBar({ market, global, asOf, onGlobal }) {
           onClick={onGlobal}
         >
           {g.label}
+        </button>
+      )}
+      {breadth && (
+        <button
+          type="button"
+          className={`mood ${BR_CLS[breadth.zone] ?? 'calm'} mood-btn`}
+          title={`台股市場廣度 ${Math.round(breadth.score)} 分（${breadth.label}），建議整體持股${breadth.posture.cap === 100 ? '正常' : `最多 ${breadth.posture.cap}%`}`}
+          onClick={onGlobal}
+        >
+          廣度 {Math.round(breadth.score)}・持股{breadth.posture.cap === 100 ? '正常' : ` ${breadth.posture.cap}%`}
         </button>
       )}
       <span className="mk-date">

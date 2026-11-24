@@ -3,6 +3,7 @@ import { getResearch } from '../api.js';
 import { Spark } from './Mini.jsx';
 import { fmtNum, fmtPct, fmtShortDate, tone } from '../format.js';
 import { GROUPS, INDUSTRY_LINKS, BY_ID } from '../../../server/screener/global.js';
+import BreadthPanel, { PostureCard } from './BreadthPanel.jsx';
 
 export const GMOOD = {
   calm: { label: '國際平穩', cls: 'calm' },
@@ -71,16 +72,30 @@ function EventLine({ ev, level }) {
   );
 }
 
-export default function GlobalView({ global }) {
-  const [res, setRes] = useState(undefined);
+export default function GlobalView({ global, breadth }) {
+  const [full, setFull] = useState(undefined);
   useEffect(() => {
     getResearch()
-      .then((r) => setRes(r?.global ?? null))
-      .catch(() => setRes(null));
+      .then((r) => setFull(r ?? null))
+      .catch(() => setFull(null));
   }, []);
+  const res = full === undefined ? undefined : (full?.global ?? null);
+
+  const top = breadth ? (
+    <>
+      <PostureCard b={breadth} research={full?.breadth} />
+      <BreadthPanel b={breadth} research={full?.breadth} strategies={full?.shortTerm} />
+      <h2 className="section-title">國際市場與原物料</h2>
+    </>
+  ) : null;
 
   if (!global?.items?.length) {
-    return <div className="empty">還沒有國際行情資料，下一次自動更新後就會出現。</div>;
+    return (
+      <div className="global-view">
+        {top}
+        <div className="empty">還沒有國際行情資料，下一次自動更新後就會出現。</div>
+      </div>
+    );
   }
   const mood = global.mood;
   const m = GMOOD[mood.level] ?? GMOOD.unknown;
@@ -96,6 +111,7 @@ export default function GlobalView({ global }) {
 
   return (
     <div className="global-view">
+      {top}
       <section className={`panic-banner ${m.cls}`}>
         <div>
           <h2>{m.label}</h2>

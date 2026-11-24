@@ -1,6 +1,39 @@
 // 把累積的 JSON 檔整理成篩選要用的結構
 import { readJSON, listKeys } from '../lib/store.js';
 import { adjustSeries, lastJump } from '../lib/adjust.js';
+import { computeBreadth, splitAtJumps, packBreadth } from './breadth.js';
+
+// 市場廣度要用約 400 個交易日（120 日線＋近一年的走勢），算一次就快取到有新資料為止
+let breadthCache = null;
+export async function loadBreadth({ days = 400, keep = 260 } = {}) {
+  const keys = (await listKeys('prices')).slice(-days);
+  const tag = `${keys.at(-1)}|${keys.length}`;
+  if (breadthCache?.tag === tag) return breadthCache.B;
+  const files = await Promise.all(keys.map((k) => readJSON(`prices/${k}.json`, null)));
+  const series = {};
+  files.forEach((f, gi) => {
+    for (const [code, r] of Object.entries(f?.s ?? {})) {
+      const s = (series[code] ??= { d: [], g: [], o: [], h: [], l: [], c: [], v: [] });
+      s.d.push(keys[gi]);
+      s.g.push(gi);
+      s.o.push(r[0]);
+      s.h.push(r[1]);
+      s.l.push(r[2]);
+      s.c.push(r[3]);
+      s.v.push(r[4]);
+    }
+  });
+  const div = (await readJSON('dividends.json', null)) ?? {};
+  const list = [];
+  for (const [code, s] of Object.entries(series)) {
+    adjustSeries(s, div[code]);
+    list.push(...splitAtJumps(s));
+  }
+  const B = packBreadth(keys, computeBreadth(keys.length, list), keep);
+  B.tx = files.slice(-keep).map((f) => f?.taiex ?? null); // 加權指數，畫在廣度圖下面對照
+  breadthCache = { tag, B };
+  return B;
+}
 
 export async function loadData({ priceDays = 110 } = {}) {
   const stocks = (await readJSON('stocks.json', {})) ?? {};
@@ -71,5 +104,6 @@ export async function loadData({ priceDays = 110 } = {}) {
     instKeys,
     inst,
     global,
+    breadth: await loadBreadth(),
   };
 }

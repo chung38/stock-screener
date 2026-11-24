@@ -3,6 +3,7 @@
 import { technical, marketMood, smaSeries } from './indicators.js';
 import { shiftMonth, parseQ, shiftQuarter } from '../lib/dates.js';
 import { globalSummary, industryLinks } from './global.js';
+import { breadthSummary, posture } from './breadth.js';
 
 export const DEFAULTS = {
   // 基本面
@@ -234,6 +235,8 @@ export function screenData(D, query = {}) {
   const p = coerceParams(query);
   const market = D.taiex.length ? marketMood(D.taiex) : { level: 'unknown', reason: '尚無加權指數資料' };
   const global = globalSummary(D.global);
+  const bsum = breadthSummary(D.breadth);
+  const breadth = bsum ? { ...bsum, posture: posture(bsum), series: D.breadth } : null;
 
   const list = [];
   const panic = [];
@@ -280,6 +283,7 @@ export function screenData(D, query = {}) {
     asOf: D.priceKeys[D.priceKeys.length - 1] ?? null,
     market,
     global,
+    breadth,
     universe,
     list,
     panic: panic.slice(0, 60),

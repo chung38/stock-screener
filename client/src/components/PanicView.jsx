@@ -23,7 +23,7 @@ export default function PanicView({ data, onPick, selected }) {
           {gm && gm.level !== 'unknown' && (
             <p className="small">
               國際：<b>{GMOOD[gm.level].label}</b>
-              {gm.reasons?.length ? `（${gm.reasons.join('、')}）` : ''}。回測中國際利空隔天台股常跟著跌，但之後 5 天平均反彈較大，細節見「國際與原物料」。
+              {gm.reasons?.length ? `（${gm.reasons.join('、')}）` : ''}。回測中國際利空隔天台股常跟著跌，但之後 5 天平均反彈較大，細節見「市場環境」。
             </p>
           )}
         </div>

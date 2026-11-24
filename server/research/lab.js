@@ -3,6 +3,7 @@
 import { ROUND_TRIP } from '../screener/breakout.js';
 import { shiftMonth, shiftQuarter } from '../lib/dates.js';
 import { INSTRUMENTS, INDUSTRY_LINKS, statsAt, globalMood } from '../screener/global.js';
+import { computeBreadth, splitAtJumps, packBreadth, ZONES, zoneOf } from '../screener/breadth.js';
 
 const MIN_LOTS = 300; // 20 日均量（張）
 const MIN_PRICE = 10;
@@ -582,6 +583,15 @@ export function runLab(A, { onProgress = () => {} } = {}) {
   };
   const equalWeight = { all: ewRet(firstG, lastG), is: ewRet(firstG, splitG), oos: ewRet(splitG, lastG) };
 
+  // ---- 台股市場廣度（每天收盤後就知道，隔天開盤才進場，不偷看未來） ----
+  onProgress('市場廣度');
+  const brRows = computeBreadth(
+    A.dates.length,
+    codes.flatMap((code) => splitAtJumps(A.series[code])),
+  );
+  const brScore = brRows.map((x) => x.score);
+  const BR_TH = 40;
+
   // ---- 策略家族 ----
   const families = [];
   function runFamily(id, name, combos, signalFor) {
@@ -769,6 +779,8 @@ export function runLab(A, { onProgress = () => {} } = {}) {
           ['soxUp', '＋費半在季線之上', (c, g) => gAfter[g].SOX?.aboveMA60 === true],
         ]
       : []),
+    ['brHi', `＋市場廣度 ≥ ${BR_TH}`, (c, g) => brScore[g] != null && brScore[g] >= BR_TH],
+    ['brLo', `＋市場廣度 < ${BR_TH}`, (c, g) => brScore[g] != null && brScore[g] < BR_TH],
   ];
   const filterTables = [];
   for (const f of families) {
@@ -836,6 +848,18 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     const pick = (ok.length ? ok : cands).sort((a, b) => (b.is.avg ?? -99) - (a.is.avg ?? -99))[0];
     if (!pick) continue;
     const pf = multiPortfolio(pick._trades);
+    // 依市場廣度分開看：同一段期間（有廣度分數之後）全部照做、只在廣度高時做、只在廣度低時做
+    const known = pick._trades.filter((t) => brScore[t.g] != null);
+    const hi = known.filter((t) => brScore[t.g] >= BR_TH);
+    const lo = known.filter((t) => brScore[t.g] < BR_TH);
+    const brief = ({ cagr, p10, p90, mdd, taken, market }) => ({ cagr, p10, p90, mdd, taken, market });
+    const byBreadth = {
+      hi: stats(hi),
+      lo: stats(lo),
+      pfAll: brief(multiPortfolio(known)),
+      pfHi: brief(multiPortfolio(hi)),
+      pfLo: brief(multiPortfolio(lo)),
+    };
     shortTerm.push({
       group,
       name,
@@ -849,6 +873,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
       verdict: pick.verdict,
       byExit: Object.fromEntries(cands.map((r) => [r.exit, { is: r.is.avg, oos: r.oos.avg, n: r.all.n }])),
       portfolio: pf,
+      byBreadth,
     });
   }
   shortTerm.sort((a, b) => (b.portfolio.cagr ?? -999) - (a.portfolio.cagr ?? -999));
@@ -946,6 +971,7 @@ export function runLab(A, { onProgress = () => {} } = {}) {
     randomPortfolio,
     buyHold,
     global: hasGlobal ? globalResearch(A, codes) : null,
+    breadth: breadthResearch(A, brRows, ewDaily, BR_TH),
     winners,
     screened,
     ms: Date.now() - t0,
@@ -1162,4 +1188,100 @@ function globalResearch(A, codes) {
     list.map(([id, dir, why]) => ({ ind, id, dir, why, corr: links[ind]?.corr[id] ?? null, lead: links[ind]?.lead[id] ?? null })),
   );
   return { events, weeks: weekEnds.length, links, topByInst, mapped };
+}
+
+// ---------------- 台股市場廣度 ----------------
+
+/**
+ * 1. 廣度分數在各區間時，加權指數與等權平均之後 5／20 天的表現
+ * 2. 依廣度決定要不要持有等權平均（每天收盤判斷，隔天生效，換手扣 0.3%）
+ */
+function breadthResearch(A, rows, ewDaily, th) {
+  const score = rows.map((x) => x.score);
+  const first = score.findIndex((x) => x != null);
+  if (first < 0) return null;
+  const tx = A.taiex;
+  const last = A.dates.length - 1;
+  const fwdTx = (g, h) => (g + h <= last && tx[g] && tx[g + h] ? (tx[g + h] / tx[g] - 1) * 100 : null);
+  const fwdEw = (g, h) => {
+    if (g + h > last) return null;
+    let v = 1;
+    for (let k = g + 1; k <= g + h; k++) if (ewDaily[k] != null) v *= 1 + ewDaily[k];
+    return (v - 1) * 100;
+  };
+  const agg = (xs) => {
+    const v = xs.filter((x) => x != null);
+    if (!v.length) return { n: 0 };
+    return { n: v.length, avg: r2(v.reduce((a, b) => a + b, 0) / v.length), up: r2((v.filter((x) => x > 0).length / v.length) * 100) };
+  };
+  const zones = ZONES.map((z) => {
+    const gs = [];
+    for (let g = first; g <= last; g++) if (score[g] != null && zoneOf(score[g]).id === z.id) gs.push(g);
+    let ep = 0;
+    let prev = -Infinity;
+    for (const g of gs) {
+      if (g - prev > 10) ep++;
+      prev = g;
+    }
+    return {
+      id: z.id,
+      label: z.label,
+      min: z.min,
+      days: gs.length,
+      episodes: ep,
+      tx5: agg(gs.map((g) => fwdTx(g, 5))),
+      tx20: agg(gs.map((g) => fwdTx(g, 20))),
+      ew5: agg(gs.map((g) => fwdEw(g, 5))),
+      ew20: agg(gs.map((g) => fwdEw(g, 20))),
+    };
+  });
+  const allDays = [];
+  for (let g = first; g <= last; g++) if (score[g] != null) allDays.push(g);
+  const all = {
+    days: allDays.length,
+    tx5: agg(allDays.map((g) => fwdTx(g, 5))),
+    tx20: agg(allDays.map((g) => fwdTx(g, 20))),
+    ew5: agg(allDays.map((g) => fwdEw(g, 5))),
+    ew20: agg(allDays.map((g) => fwdEw(g, 20))),
+  };
+  // 擇時：依條件決定持股比例（0～1）持有等權平均，其餘空手；調整部位時對變動的部分扣 0.3%
+  const timing = (hold, label) => {
+    let v = 1;
+    let peak = 1;
+    let mdd = 0;
+    let w = 0;
+    let switches = 0;
+    let daysIn = 0;
+    for (let g = first; g < last; g++) {
+      const want = Number(hold(g));
+      if (want !== w) {
+        v *= 1 - 0.003 * Math.abs(want - w);
+        switches++;
+        w = want;
+      }
+      if (w > 0 && ewDaily[g + 1] != null) {
+        v *= 1 + w * ewDaily[g + 1];
+        daysIn += w;
+      }
+      peak = Math.max(peak, v);
+      mdd = Math.min(mdd, v / peak - 1);
+    }
+    const years = (last - first) / 245;
+    return {
+      label,
+      total: r2((v - 1) * 100),
+      cagr: years > 0 ? r2((v ** (1 / years) - 1) * 100) : null,
+      mdd: r2(mdd * 100),
+      exposure: r2((daysIn / Math.max(1, last - first)) * 100),
+      switches,
+    };
+  };
+  const timingRows = [
+    timing(() => true, '一直持有'),
+    timing((g) => score[g] >= th, `廣度 ≥ ${th} 才持有`),
+    timing((g) => score[g] < th, `廣度 < ${th} 才持有`),
+    timing((g) => score[g] >= 50, '廣度 ≥ 50 才持有'),
+    timing((g) => (score[g] >= th ? 1 : score[g] >= 20 ? 0.5 : 0.25), `廣度 ≥ ${th} 全持有、20～${th} 持有一半、< 20 持有 1/4`),
+  ];
+  return { from: A.dates[first], threshold: th, zones, all, timing: timingRows, series: packBreadth(A.dates, rows, 600) };
 }

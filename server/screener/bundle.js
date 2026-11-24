@@ -62,6 +62,7 @@ export function pack(D, { minVolLots = 50, minPrice = 3, meta = {} } = {}) {
     instKeys: D.instKeys,
     inst: Object.fromEntries(D.instKeys.map((k) => [k, pick(D.inst[k], (r) => [r[0], r[1]])])),
     global: Object.fromEntries(Object.entries(D.global ?? {}).map(([id, x]) => [id, [x.d, x.c]])),
+    breadth: D.breadth ?? null,
   };
 }
 
@@ -101,5 +102,6 @@ export function unpack(B) {
     instKeys: B.instKeys,
     inst: B.inst,
     global: Object.fromEntries(Object.entries(B.global ?? {}).map(([id, [d, c]]) => [id, { d, c }])),
+    breadth: B.breadth ?? null,
   };
 }

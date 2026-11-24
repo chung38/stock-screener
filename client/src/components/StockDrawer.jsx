@@ -3,6 +3,7 @@ import { getStock, getResearch } from '../api.js';
 import { fmtChg, VolChip, TrendChip, corrLabel } from './GlobalView.jsx';
 import PriceChart from './PriceChart.jsx';
 import ResonanceRings from './ResonanceRings.jsx';
+import PositionSizer from './PositionSizer.jsx';
 import { fmtNum, fmtPct, fmtLots, tone, deductLabel, quarterLabel, monthLabel, fmtShortDate } from '../format.js';
 
 function Bars({ items, valueKey, labelKey, threshold, fmt = (v) => fmtNum(v, 0), unit = '' }) {
@@ -94,7 +95,7 @@ function GlobalLinks({ ind, links }) {
   );
 }
 
-export default function StockDrawer({ code, params, onClose }) {
+export default function StockDrawer({ code, params, posture, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -246,6 +247,8 @@ export default function StockDrawer({ code, params, onClose }) {
               </p>
             </section>
           )}
+
+          {t?.ok && <PositionSizer key={code} tech={t} posture={posture} />}
 
           {d.links?.length > 0 && <GlobalLinks ind={d.info?.ind} links={d.links} />}
         </div>

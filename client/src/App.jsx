@@ -129,7 +129,7 @@ export default function App() {
             <p>基本面爆發 × 籌碼進駐 × 技術面突破</p>
           </div>
         </div>
-        <MarketBar market={data?.market} global={data?.global} asOf={data?.asOf} onGlobal={() => setTab('global')} />
+        <MarketBar market={data?.market} global={data?.global} breadth={data?.breadth} asOf={data?.asOf} onGlobal={() => setTab('global')} />
         <div className="top-actions">
           {STATIC ? (
             <span className="mk-date">每個交易日 15:05、17:10 自動更新</span>
@@ -156,9 +156,12 @@ export default function App() {
           突破策略
         </button>
         <button type="button" className={tab === 'global' ? 'on' : ''} onClick={() => setTab('global')}>
-          國際與原物料
-          {data?.global?.mood?.level === 'panic' || data?.global?.mood?.level === 'caution' ? (
-            <span className={`warn-dot ${data.global.mood.level}`} aria-label="國際行情有警示" />
+          市場環境
+          {data?.global?.mood?.level === 'panic' || data?.global?.mood?.level === 'caution' || data?.breadth?.posture?.cap < 100 ? (
+            <span
+              className={`warn-dot ${data?.breadth?.posture?.cap <= 25 || data?.global?.mood?.level === 'panic' ? 'panic' : 'caution'}`}
+              aria-label="市場環境有警示"
+            />
           ) : null}
         </button>
         <button type="button" className={tab === 'research' ? 'on' : ''} onClick={() => setTab('research')}>
@@ -280,7 +283,7 @@ export default function App() {
             />
           )}
 
-          {tab === 'global' && <GlobalView global={data?.global} />}
+          {tab === 'global' && <GlobalView global={data?.global} breadth={data?.breadth} />}
 
           {tab === 'research' && <ResearchView />}
 
@@ -288,7 +291,7 @@ export default function App() {
         </main>
       </div>
 
-      {picked && <StockDrawer code={picked} params={params} onClose={() => setPicked(null)} />}
+      {picked && <StockDrawer code={picked} params={params} posture={data?.breadth?.posture} onClose={() => setPicked(null)} />}
     </div>
   );
 }

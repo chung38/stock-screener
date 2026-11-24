@@ -49,6 +49,7 @@ const EMPTY = {
   instKeys: [],
   inst: {},
   global: {},
+  breadth: null,
 };
 
 export const getDefaults = () => (STATIC ? Promise.resolve(DEFAULTS) : api('/api/defaults'));

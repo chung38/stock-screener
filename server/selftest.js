@@ -124,6 +124,54 @@ test('國際指標波動與燈號', () => {
   assert.equal(industryLinks('不存在的產業', sum).length, 0);
 });
 
+const { computeBreadth, splitAtJumps, breadthSummary, packBreadth, posture } = await import('./screener/breadth.js');
+const { sizePosition, defaultStop, tick } = await import('./screener/sizing.js');
+test('市場廣度：全部上漲時分數高、全部下跌時分數低', () => {
+  const N = 200;
+  const mk = (dir) =>
+    Array.from({ length: 300 }, (_, k) => {
+      const c = Array.from({ length: N }, (_, i) => 50 * (1 + dir * 0.004 * i + 0.001 * Math.sin(i + k)));
+      return { g: c.map((_, i) => i), c, v: c.map(() => 200000) };
+    });
+  const up = computeBreadth(N, mk(1));
+  const dn = computeBreadth(N, mk(-1));
+  assert.ok(up.at(-1).score > 80, `上漲 ${up.at(-1).score}`);
+  assert.ok(dn.at(-1).score < 20, `下跌 ${dn.at(-1).score}`);
+  assert.equal(up[100].score, null); // 120 日線還沒有資料
+  const dates = Array.from({ length: N }, (_, i) => String(20250000 + i));
+  const sum = breadthSummary(packBreadth(dates, dn));
+  assert.equal(sum.zone, 'critical');
+  assert.equal(posture(sum).cap, 25);
+  assert.equal(posture({ score: 45 }).cap, 100);
+  assert.equal(posture({ score: 30 }).cap, 50);
+});
+test('市場廣度：減資跳動切成兩段', () => {
+  const c = [...Array(30).fill(10), ...Array(30).fill(20)];
+  const parts = splitAtJumps({ g: c.map((_, i) => i), c, v: c.map(() => 1) });
+  assert.equal(parts.length, 2);
+  assert.equal(parts[1].g[0], 30);
+});
+test('部位計算：依停損距離回推股數，並受單檔上限限制', () => {
+  // 100 萬、每筆虧 1%＝1 萬；100 元買、95 元停損，每股虧 5 元＋手續費與證交稅約 0.56 元 → 1,797 股
+  const r = sizePosition({ capital: 1e6, riskPct: 1, maxPct: 100, entry: 100, stop: 95 });
+  assert.equal(r.shares, 1797);
+  assert.equal(r.lots, 1);
+  assert.equal(r.odd, 797);
+  assert.ok(r.loss <= 10000);
+  // 單檔最多 10%＝10 萬 → 最多 998 股
+  const c = sizePosition({ capital: 1e6, riskPct: 1, maxPct: 10, entry: 100, stop: 95 });
+  assert.equal(c.shares, 998);
+  assert.equal(c.capped, true);
+  // 持股水位 25% → 風險只剩 1/4
+  assert.equal(sizePosition({ capital: 1e6, riskPct: 1, maxPct: 100, entry: 100, stop: 95, scale: 0.25 }).shares, 449);
+  assert.ok(sizePosition({ capital: 1e6, riskPct: 1, maxPct: 20, entry: 100, stop: 101 }).error);
+  assert.equal(tick(73.4), 0.1);
+  assert.equal(defaultStop({ close: 100, ma20: 95, low5: 90 }), 94);
+  assert.equal(defaultStop({ close: 100, ma20: 99.8, low5: 99.5 }), 98.8);
+  assert.equal(defaultStop({ close: 100, ma20: 100.2, low5: 99.9 }), 96.9); // 沒站上月線 → 近 5 日低點再下 3%
+  assert.equal(defaultStop({ close: 100 }), 92);
+});
+
 test('OpenAPI 營益分析（實際欄位）', () => {
   const r = parseMarginOpenApi([
     {
